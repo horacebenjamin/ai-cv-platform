@@ -39,6 +39,7 @@ class AdminPanelProvider extends PanelProvider
             ->navigationGroups([
                 'CV Management',
                 'Job Management',
+                'AI Management',
             ])
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
