@@ -4,9 +4,11 @@ namespace App\Filament\Resources\Support;
 
 use App\Filament\Resources\AiRequests\AiRequestResource;
 use App\Filament\Resources\CreditTransactions\CreditTransactionResource;
+use App\Jobs\ProcessAIRequest;
 use App\Models\AiRequest;
 use App\Models\CreditTransaction;
 use App\Models\CV;
+use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
@@ -18,6 +20,7 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\Summarizers\Sum;
@@ -31,7 +34,7 @@ final class AiAdmin
 {
     private const STATUSES = [
         'queued' => 'Queued',
-        'running' => 'Running',
+        'processing' => 'Processing',
         'completed' => 'Completed',
         'failed' => 'Failed',
     ];
@@ -74,7 +77,7 @@ final class AiAdmin
     {
         return match ($status) {
             'pending' => 'Queued',
-            'processing' => 'Running',
+            'processing', 'running' => 'Processing',
             default => self::STATUSES[$status] ?? str((string) $status)->headline()->toString(),
         };
     }
@@ -144,7 +147,7 @@ final class AiAdmin
                 TextColumn::make('created_at')->label('Created At')->dateTime('d M Y, H:i')->sortable(),
             ])
             ->filters([
-                SelectFilter::make('status')->options(self::STATUSES + ['pending' => 'Queued (legacy)', 'processing' => 'Running (legacy)']),
+                SelectFilter::make('status')->options(self::STATUSES + ['pending' => 'Queued (legacy)', 'running' => 'Processing (legacy)']),
                 SelectFilter::make('provider')->options(['OpenAI' => 'OpenAI', 'Anthropic' => 'Anthropic', 'Google' => 'Google', 'Mistral' => 'Mistral', 'Meta' => 'Meta'])->query(function (Builder $query, array $data): Builder {
                     $value = $data['value'] ?? null;
                     $patterns = ['OpenAI' => ['gpt', 'o1', 'o3', 'o4'], 'Anthropic' => ['claude'], 'Google' => ['gemini'], 'Mistral' => ['mistral'], 'Meta' => ['llama']];
@@ -164,7 +167,23 @@ final class AiAdmin
             ->defaultSort('created_at', 'desc')
             ->emptyStateHeading('No AI requests yet')
             ->emptyStateDescription('Manually queue a request to test the future AI processing workflow.')
-            ->emptyStateActions([CreateAction::make('create')->label('Create AI Request')->url(AiRequestResource::getUrl('create'))]));
+            ->emptyStateActions([CreateAction::make('create')->label('Create AI Request')->url(AiRequestResource::getUrl('create'))]))
+            ->recordActions([
+                Action::make('process')
+                    ->label('Process Request')
+                    ->icon('heroicon-o-play')
+                    ->color('primary')
+                    ->requiresConfirmation()
+                    ->visible(fn (AiRequest $record): bool => in_array($record->status, ['queued', 'pending'], true))
+                    ->action(function (AiRequest $record): void {
+                        $record->forceFill(['status' => 'queued'])->save();
+                        ProcessAIRequest::dispatch($record->getKey());
+                        Notification::make()->title('AI request queued')->success()->send();
+                    }),
+                ViewAction::make(),
+                EditAction::make(),
+                DeleteAction::make(),
+            ]);
     }
 
     public static function aiRequestInfolist(Schema $schema): Schema
