@@ -36,6 +36,10 @@ class AdminPanelProvider extends PanelProvider
             ->resources([
                 CVResource::class,
             ])
+            ->navigationGroups([
+                'CV Management',
+                'Job Management',
+            ])
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
                 Dashboard::class,
