@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * Records an AI generation request and its processing outcome.
@@ -24,5 +25,11 @@ class AiRequest extends Model
             'cost' => 'decimal:6',
             'processing_time_ms' => 'integer',
         ];
+    }
+
+    /** Get the user who initiated the AI request. */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 }

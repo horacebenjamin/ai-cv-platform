@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * Represents an education entry listed on a CV.
@@ -17,5 +18,11 @@ class CvEducation extends Model
     protected function casts(): array
     {
         return ['start_date' => 'date', 'end_date' => 'date'];
+    }
+
+    /** Get the CV that contains this education entry. */
+    public function cv(): BelongsTo
+    {
+        return $this->belongsTo(CV::class);
     }
 }

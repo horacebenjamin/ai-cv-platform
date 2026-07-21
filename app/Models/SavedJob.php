@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * Represents a user's saved job before or after applying.
@@ -37,5 +38,23 @@ class SavedJob extends Model
             'saved_at' => 'datetime',
             'applied_at' => 'datetime',
         ];
+    }
+
+    /** Get the user who saved the job. */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    /** Get the company associated with the saved job. */
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
+    }
+
+    /** Get the source job description, when available. */
+    public function jobDescription(): BelongsTo
+    {
+        return $this->belongsTo(JobDescription::class);
     }
 }
