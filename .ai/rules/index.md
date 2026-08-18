@@ -5,6 +5,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | Applies to | Rule file |
 | --- | --- |
 | app/** | .ai/rules/app.md |
+| app/{Ai/Agents,Jobs,Services/AI,Services/CV}/** | .ai/rules/c-v.md |
 | tests/Feature/** | .ai/rules/feature.md |
 | app/Filament/** | .ai/rules/filament.md |
 | app/Http/** | .ai/rules/http.md |

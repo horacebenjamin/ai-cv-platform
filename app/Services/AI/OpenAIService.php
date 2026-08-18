@@ -63,7 +63,7 @@ final class OpenAIService implements AIProviderInterface
                 ->get('/models/'.$this->modelName())
                 ->successful();
         } catch (Throwable $exception) {
-            Log::warning('OpenAI health check failed.', ['exception' => $exception->getMessage()]);
+            Log::warning('OpenAI health check failed.', ['exception' => $exception::class]);
 
             return false;
         }

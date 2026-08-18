@@ -21,7 +21,7 @@ Browser
           MySQL 8.4
 
 CV generation --> GenerateCvAgent --> Laravel AI SDK --> configured provider
-Generic AI services --> legacy provider boundary --> OpenAI Responses API
+Generic career content --> CareerContentAgent --> Laravel AI SDK --> configured provider
 ```
 
 The codebase favours a modular monolith: domains share one Laravel application and database, while orchestration is separated into narrowly focused services.
@@ -84,17 +84,17 @@ Foreign keys generally cascade when their owning aggregate is deleted. A CV vari
 
 ## AI Subsystem
 
-### Coexisting provider boundaries
+### Dual-agent SDK boundary
 
-CV generation uses `GenerateCvAgent` under `app/Ai/Agents`. The agent implements Laravel AI SDK's `Agent` and `HasStructuredOutput` contracts, owns the CV-generation instructions and schema, and does not perform persistence or accounting. The SDK owns provider transport, structured response decoding, normalized usage, and provider/model metadata for this path.
+CV generation uses `GenerateCvAgent` under `app/Ai/Agents`. The agent implements Laravel AI SDK's `Agent` and `HasStructuredOutput` contracts, owns the CV-generation instructions and schema, and does not perform persistence or accounting.
 
-Generic text generation temporarily retains the application-owned `AIProviderInterface`. `AIService` resolves its legacy driver, calls it, measures elapsed time, and delegates response normalization to `ResponseParser`. `OpenAIService` remains the configured legacy implementation.
+Supported generic text generation uses `CareerContentAgent`. It implements the SDK `Agent` contract with `Promptable`, owns the explicit feature allow-list and feature-specific instructions, and produces plain text without persistence, accounting, queue, or provider-specific concerns.
 
-`config/ai.php` temporarily contains both SDK-compatible OpenAI keys and a `legacy_driver`. Both paths therefore share credentials, model, timeout, pricing, and accounting configuration without changing the generic runtime path. Provider-side SDK response storage is disabled by default for CV/profile privacy.
+The SDK owns provider transport, normalized response usage, and actual provider/model metadata for both paths. `config/ai.php` temporarily retains `legacy_driver` and compatibility keys because `AIProviderInterface`, `AIService`, `OpenAIService`, and `ResponseParser` remain in the repository for Phase 3 cleanup. They are no longer used by either migrated generation path. Provider-side SDK response storage is disabled by default for CV/profile privacy.
 
 ### Prompt composition
 
-`GenerateCvAgent` owns CV-generation instructions and receives explicitly labelled JSON context. `PromptTemplateService` continues to own the generic feature templates:
+`GenerateCvAgent` owns CV-generation instructions and receives explicitly labelled JSON context. `CareerContentAgent` owns the approved generic feature instructions:
 
 - CV rewrite;
 - professional summary;
@@ -102,13 +102,13 @@ Generic text generation temporarily retains the application-owned `AIProviderInt
 - cover letter;
 - job-match analysis.
 
-`PromptCompiler` continues to replace a fixed allow-list of placeholders for generic text requests. Arrays and objects are encoded as readable JSON, missing values become empty strings, and unknown placeholders are not dynamically evaluated.
+Generic structured request context is passed to the agent as labelled JSON instead of placeholder substitution. A legacy plain prompt is wrapped as a labelled `request` field only when its request feature is approved. Unknown features and malformed structured context are rejected before prompting. `PromptCompiler` and `PromptTemplateService` remain present but unused pending Phase 3 review; their pre-existing CV-template changes are retained.
 
 ### Request orchestration
 
 `AIRequestService` owns persistence and state transitions. It creates and queues requests, marks work as processing, records completion metrics, deducts credits, creates CV-linked history where appropriate, and records failures.
 
-`ProcessAIRequest` is the asynchronous entry point. Generic features compile and send their prompts through `AIService`. CV generation delegates to `CVGenerationService` because it has a larger transactional workflow.
+`ProcessAIRequest` is the sole asynchronous entry point. Generic features synchronously prompt `CareerContentAgent` inside the job. CV generation delegates to `CVGenerationService` because it has a larger transactional workflow. The SDK agent queue API is not used.
 
 ```text
 Feature action
@@ -118,7 +118,9 @@ AIRequestService::create --> ai_requests: queued
    |
    v
 ProcessAIRequest
-   |-- generic feature --> compile --> provider --> normalise --> complete
+   |-- approved generic feature --> labelled context --> CareerContentAgent
+   |                              --> SDK text + Usage + Meta
+   |                              --> transactional complete + credits
    `-- cv_generation --> CVGenerationService --> GenerateCvAgent
                             |-- verify ownership and active template
                             |-- build profile/job context
@@ -140,6 +142,7 @@ ProcessAIRequest
 - The queue failure hook ensures an exhausted request reaches `failed` state.
 - CV records, their sections, history, request completion, and credit deduction are committed together, preventing partial generated CVs. The provider call occurs before this transaction.
 - The request is reloaded with a row lock before CV persistence; an already-completed request does not create a duplicate CV, history record, or credit deduction.
+- Generic request completion, optional CV history, and credit deduction are also committed under a request row lock. An already-completed request cannot deduct credits twice, and a late exhausted-job hook cannot overwrite completion.
 
 ## CV Generation Components
 
@@ -157,7 +160,7 @@ The generation prompt instructs the provider to use supplied facts only. That in
 
 ## Data and Accounting
 
-`ai_requests` is the audit record for prompt, normalized response, actual provider, model, status, token use, cost, and processing time. Legacy rows may have a null provider and the admin UI falls back to model-name inference for those records. Credits are append-only entries in `credit_transactions`; AI consumption creates negative amounts. Subscription records hold plan state and the remaining-credit value.
+`ai_requests` is the audit record for prompt, normalized response, actual SDK provider, model, status, token use, cost, and processing time. Legacy rows may have a null provider and the admin UI falls back to model-name inference for those records. Credits are append-only entries in `credit_transactions`; AI consumption creates negative amounts. Subscription records hold plan state and the remaining-credit value.
 
 Pricing and credit conversion are configuration-driven. `AIUsageService` calculates:
 
@@ -178,15 +181,15 @@ Cost and credits are different units and should not be conflated in UI labels or
 
 ## Testing Strategy
 
-Feature tests use Pest with `RefreshDatabase`. CV generation uses the SDK's `GenerateCvAgent::fake()` support with structured responses, explicit usage/meta where accounting is asserted, prompt assertions, and stray-prompt prevention. `FakeAIProvider` remains for generic legacy requests.
+Feature tests use Pest with `RefreshDatabase`. CV generation uses `GenerateCvAgent::fake()` with structured responses; generic generation uses `CareerContentAgent::fake()` with text responses. Both provide explicit usage/meta where accounting is asserted, inspect prompts at the application boundary, and prevent stray prompts. `FakeAIProvider` remains in the repository but is no longer used by migrated-path tests.
 
-The AI engine tests cover the legacy generic prompt compilation, queue dispatch, request transitions, normalized usage/cost/credits, failure state, and outgoing OpenAI request shape. CV generation tests cover request transitions, the complete aggregate and sections, structured domain validation, agent failure, empty and invalid input, idempotency, provider/model usage accounting, history, credits, and transactional rollback.
+The AI engine tests cover all approved generic feature instructions and context, queue dispatch, request transitions, normalized SDK text and metadata, usage/cost/credits, unknown and malformed input, retry/exhaustion behavior, and idempotency. CV generation tests cover request transitions, the complete aggregate and sections, structured domain validation, agent failure, empty and invalid input, idempotency, provider/model usage accounting, history, credits, and transactional rollback. Tests also prove CV generation does not invoke the generic agent.
 
 Tests should target the service or feature boundary that owns the behaviour. Provider calls should be faked; real API credentials are never required by the test suite.
 
 ## Extension Points
 
-- Add SDK providers for CV generation through Laravel AI configuration. Generic providers still require `AIProviderInterface` until the generic path is migrated.
+- Add SDK providers for both agents through Laravel AI configuration and provider/model pricing entries.
 - Add AI features by defining a stable feature name and prompt, then routing any specialised persistence through a domain service.
 - Add customer workflows as Inertia pages and named Laravel routes; keep admin-only operations in Filament.
 - Implement CV export behind `CVExportService` so output formats do not leak into the CV generation workflow.

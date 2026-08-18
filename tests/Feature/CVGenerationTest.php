@@ -1,5 +1,6 @@
 <?php
 
+use App\Ai\Agents\CareerContentAgent;
 use App\Ai\Agents\GenerateCvAgent;
 use App\Jobs\ProcessAIRequest;
 use App\Models\AiRequest;
@@ -26,6 +27,7 @@ beforeEach(function (): void {
     config()->set('ai.credits.tokens_per_credit', 1000);
     config()->set('ai.credits.minimum', 1);
     GenerateCvAgent::fake([cvAgentResponse()])->preventStrayPrompts();
+    CareerContentAgent::fake()->preventStrayPrompts();
 });
 
 /** @return array<string, mixed> */
@@ -124,6 +126,7 @@ it('queues and successfully generates a complete CV', function (): void {
             && isset($context['experience'], $context['education'], $context['skills'], $context['projects'])
             && isset($context['languages'], $context['certifications'], $context['references'], $context['target_job']);
     });
+    CareerContentAgent::assertNeverPrompted();
 });
 
 it('transitions invalid generated data from queued to failed without partial writes', function (): void {

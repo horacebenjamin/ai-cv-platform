@@ -21,7 +21,7 @@ The authenticated customer UI is an Inertia/Vue application. Operational and con
 - Filament 5 with Livewire 4
 - Pest 3
 - Laravel Sail for all local commands
-- `laravel/ai` 0.10 is installed; CV generation uses the SDK `GenerateCvAgent`, while generic text requests temporarily continue through the application-owned `AIProviderInterface` and `OpenAIService`
+- `laravel/ai` 0.10 is installed; structured CV generation uses `GenerateCvAgent`, and supported generic career-content requests use `CareerContentAgent`
 
 Check installed versions before using package APIs. Do not infer an API version from this document.
 
@@ -32,7 +32,7 @@ Check installed versions before using package APIs. Do not infer an API version 
 3. Search version-specific Laravel documentation through Laravel Boost before code changes.
 4. Follow neighbouring files for naming, structure, types, and conventions.
 5. Keep controllers and Filament resources thin; domain behaviour belongs in services and queued jobs.
-6. CV generation uses Laravel AI SDK provider configuration; the temporary generic path must continue to depend on `AIProviderInterface`, not `OpenAIService`, until its migration is approved.
+6. Both active AI generation paths use Laravel AI SDK provider configuration. The legacy provider stack remains temporarily present for Phase 3 cleanup but is not used by migrated requests.
 7. Treat model output as untrusted. Parse and validate it before writing domain records.
 8. Keep CV generation writes, history creation, request completion, and credit deduction atomic.
 9. Never expose API keys, full sensitive prompts, CV content, or personal profile data in logs or exceptions.
@@ -60,20 +60,22 @@ Check installed versions before using package APIs. Do not infer an API version 
 
 1. A feature service creates an `AiRequest` through `AIRequestService`.
 2. `ProcessAIRequest` is dispatched to the configured database queue.
-3. For generic text features, the job marks the request as processing, compiles templates, and uses the legacy `AIService` provider pipeline.
+3. For the five approved generic text features, the job marks the request as processing, builds explicitly labelled feature/context input, and synchronously prompts `CareerContentAgent` inside the existing application job.
 4. For `cv_generation`, `CVGenerationService` validates ownership and input, builds explicitly labelled context, and synchronously prompts `GenerateCvAgent` inside the existing application job.
-5. Laravel AI SDK returns structured CV data plus normalized usage and actual provider/model metadata.
+5. Laravel AI SDK returns either structured CV data or plain career-content text plus normalized usage and actual provider/model metadata.
 6. `AIUsageService` converts usage into application-configured cost and consumed credits.
 7. The request is completed or marked failed. CV-linked operations may also create history records.
 
 `cv_generation` has a specialised SDK branch in `CVGenerationService`: it verifies ownership and inputs, requests structured output through `GenerateCvAgent`, validates the normalized array, and then builds the CV and child sections, creates a complete history snapshot, completes the AI request, and deducts credits in one database transaction. The provider call remains outside the transaction.
 
+The generic SDK branch supports `cv_rewrite`, `professional_summary`, `skills_optimisation`, `cover_letter`, and `job_match_analysis`. `CareerContentAgent` owns the feature-specific behavioral instructions and accepts labelled JSON context. Unknown feature names and malformed structured context fail without an SDK prompt. `AIRequestService` transactionally completes the request and deducts credits under a row lock so repeated or concurrent completion cannot charge twice.
+
 ## AI Contracts and Invariants
 
-- Supported prompt placeholders are defined in `PromptCompiler::PLACEHOLDERS`.
-- Named prompts are defined by `PromptTemplateService`; unknown templates without a fallback are invalid.
-- Legacy generic providers implement `generate`, `healthCheck`, `estimateCost`, and `modelName`.
-- CV generation receives provider, model, and input/output token usage from Laravel AI SDK response metadata and persists a normalized structured response rather than the raw provider payload.
+- Supported generic feature names and behavioral instructions are explicitly allow-listed by `CareerContentAgent`.
+- Generic requests may contain structured `context` or a legacy plain prompt, which is passed as a labelled `request` context only for an approved feature.
+- Both agents receive provider, model, and input/output token usage from Laravel AI SDK response metadata. CV generation persists normalized structured content; generic generation persists normalized text only, never the raw provider payload.
+- `PromptCompiler`, `PromptTemplateService`, and the legacy provider contracts remain in the repository but are not on an active migrated path.
 - AI request states are `queued`, `processing`, `completed`, and `failed`.
 - `ProcessAIRequest` tries three times with 10, 30, and 60 second backoffs and a 120 second timeout.
 - Invalid input and non-retryable HTTP responses fail immediately; transient failures are allowed to retry.
@@ -127,4 +129,4 @@ Never commit real credentials. Queue processing requires a running worker becaus
 - The customer-facing Inertia pages currently cover the Laravel Breeze shell, authentication, dashboard, and profile. Most domain management exists in Filament.
 - `CVExportService` is a reserved placeholder; export is not implemented.
 - Provider configuration is extensible, but only the OpenAI driver is configured in `config/ai.php`. Provider-side OpenAI response storage defaults to disabled.
-- CV generation has migrated to Laravel AI SDK. Generic text generation still uses the legacy provider pipeline; both paths deliberately coexist during the phased migration.
+- The legacy provider stack is intentionally retained pending Phase 3 review even though both active generation paths now use Laravel AI SDK.
