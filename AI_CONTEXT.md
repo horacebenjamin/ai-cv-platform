@@ -27,10 +27,10 @@ Check installed versions before using package APIs. Do not infer an API version 
 
 ## Frontend Component Strategy
 
-The intended customer-facing UI architecture is Inertia + Vue 3 + shadcn-vue + Tailwind CSS. shadcn-vue is not currently installed; it is the intended default component system for future customer-facing UI work, while Filament remains the component system for the `/admin` panel.
+The customer-facing UI architecture is Inertia + Vue 3 + shadcn-vue + Tailwind CSS. shadcn-vue is installed and configured as the default component system for customer-facing UI work, while Filament remains the component system for the `/admin` panel.
 
 - Do not use Filament components in customer-facing Inertia/Vue pages, and do not introduce another general-purpose Vue UI library without approval.
-- Once shadcn-vue is installed, prefer its existing primitives over equivalent low-level custom components. This normally includes Button, Input, Textarea, Label, Card, Badge, Dialog, Dropdown menu, Select, Tabs, Sheet, Table, Separator, Alert, and form primitives.
+- Prefer existing shadcn-vue primitives over equivalent low-level custom components. The initial foundation includes Button, Input, Textarea, Label, Card, Badge, and Separator; add other primitives incrementally when features require them.
 - Keep product- and domain-specific UI as custom Vue components composed from those primitives. Examples include `CvEditor`, `CvSectionEditor`, `CvPreview`, `AiGenerationPanel`, `JobMatchScore`, and `ApplicationTracker`.
 
 ## Working Rules

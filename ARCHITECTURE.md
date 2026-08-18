@@ -7,7 +7,7 @@ AI CV Platform is a Laravel monolith with two presentation surfaces, shared Eloq
 ```text
 Browser
   |-- Customer application: Inertia + Vue 3
-  |     `-- shadcn-vue (intended component system)
+  |     `-- shadcn-vue
   |           `-- Tailwind CSS
   `-- Administration: Filament + Livewire
              |
@@ -53,7 +53,7 @@ Presentation
     `-- Filament + Livewire
 ```
 
-shadcn-vue is the intended component layer in this architecture but is not currently installed. Its dependency and configuration setup is a separate implementation task.
+shadcn-vue is installed and configured as the customer application's reusable component layer.
 
 ### Customer application
 
@@ -73,7 +73,7 @@ Dashboard widgets expose AI usage and job-management summaries. Filament authent
 
 ### UI Component Boundaries
 
-- shadcn-vue is the primary reusable component system for customer-facing Inertia/Vue pages once installed.
+- shadcn-vue is the primary reusable component system for customer-facing Inertia/Vue pages.
 - Filament is reserved for administrative interfaces. Keep the two UI systems separate, and do not reuse Filament components inside Inertia/Vue pages.
 - Product-specific Vue components may compose shadcn-vue primitives into domain workflows and experiences.
 - Do not duplicate low-level primitives when a suitable shadcn-vue component exists.

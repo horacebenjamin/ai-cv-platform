@@ -38,11 +38,11 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 
 ## Frontend UI Rules
 
-- Customer-facing pages use Inertia + Vue 3 + shadcn-vue + Tailwind CSS; until shadcn-vue is installed, treat it as the intended default component system for future customer UI work.
+- Customer-facing pages use Inertia + Vue 3 + shadcn-vue + Tailwind CSS. shadcn-vue is installed and configured as the default component system for customer UI work.
 - Admin pages use Filament. Never use Filament components inside customer-facing Vue pages.
 - Prefer shadcn-vue for standard reusable UI primitives, and use custom Vue components for product- or domain-specific compositions.
 - Do not install another general-purpose Vue UI framework without approval.
-- Once shadcn-vue is installed, follow the repository's existing shadcn aliases and component conventions.
+- Follow the repository's existing shadcn aliases and component conventions.
 
 ## Documentation Files
 
