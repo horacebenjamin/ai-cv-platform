@@ -15,7 +15,7 @@ class AiRequest extends Model
     protected $table = 'ai_requests';
 
     protected $fillable = [
-        'user_id', 'cv_id', 'feature', 'prompt', 'response', 'model', 'tokens_used', 'cost',
+        'user_id', 'cv_id', 'feature', 'prompt', 'response', 'provider', 'model', 'tokens_used', 'cost',
         'status', 'processing_time_ms',
     ];
 

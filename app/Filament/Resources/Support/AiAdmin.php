@@ -59,8 +59,19 @@ final class AiAdmin
                 ->when($data['until'] ?? null, fn (Builder $query, $date): Builder => $query->whereDate('created_at', '<=', $date)));
     }
 
-    public static function provider(?string $model): string
+    public static function provider(?string $model, ?string $provider = null): string
     {
+        if (filled($provider)) {
+            return match (strtolower($provider)) {
+                'openai', 'azure' => 'OpenAI',
+                'anthropic' => 'Anthropic',
+                'gemini', 'google' => 'Google',
+                'mistral' => 'Mistral',
+                'meta' => 'Meta',
+                default => str($provider)->replace(['-', '_'], ' ')->headline()->toString(),
+            };
+        }
+
         $model = strtolower((string) $model);
 
         return match (true) {
@@ -116,7 +127,8 @@ final class AiAdmin
                 Select::make('user_id')->label('User')->relationship('user', 'name')->searchable(['name', 'email'])->preload()->required(),
                 Select::make('cv_id')->label('CV')->options(fn () => CV::query()->orderBy('title')->pluck('title', 'id'))->searchable()->preload()->helperText('Optional CV context for this operation.'),
                 TextInput::make('feature')->label('Request Type')->required()->maxLength(255)->placeholder('professional_summary')->helperText('A stable operation identifier, such as cv_rewrite.'),
-                TextInput::make('model')->label('AI Model')->required()->maxLength(255)->placeholder('gpt-5-mini')->helperText('Provider is inferred from the model name.'),
+                TextInput::make('provider')->label('AI Provider')->maxLength(255)->placeholder('Recorded after processing.'),
+                TextInput::make('model')->label('AI Model')->required()->maxLength(255)->placeholder('gpt-5-mini'),
                 Select::make('status')->options(self::STATUSES)->required()->default('queued'),
             ])->columns(2),
             Section::make('Payload')->schema([
@@ -138,7 +150,7 @@ final class AiAdmin
                 TextColumn::make('user.name')->label('User')->description(fn ($record) => $record->user?->email)->searchable()->sortable(),
                 TextColumn::make('cv_id')->label('CV')->formatStateUsing(fn ($state): string => CV::query()->find($state)?->title ?? '—')->sortable()->toggleable(),
                 TextColumn::make('feature')->label('Request Type')->badge()->searchable()->sortable(),
-                TextColumn::make('provider')->label('AI Provider')->state(fn ($record): string => self::provider($record->model))->badge()->color('info'),
+                TextColumn::make('provider')->label('AI Provider')->state(fn ($record): string => self::provider($record->model, $record->provider))->badge()->color('info'),
                 TextColumn::make('model')->label('AI Model')->searchable()->sortable(),
                 TextColumn::make('status')->badge()->formatStateUsing(fn ($state): string => self::statusLabel($state))->color(fn ($state): string => self::statusColor($state))->sortable(),
                 TextColumn::make('tokens_used')->label('Credits Used')->numeric()->sortable()->summarize(Sum::make()->label('Total')),
@@ -148,15 +160,21 @@ final class AiAdmin
             ])
             ->filters([
                 SelectFilter::make('status')->options(self::STATUSES + ['pending' => 'Queued (legacy)', 'running' => 'Processing (legacy)']),
-                SelectFilter::make('provider')->options(['OpenAI' => 'OpenAI', 'Anthropic' => 'Anthropic', 'Google' => 'Google', 'Mistral' => 'Mistral', 'Meta' => 'Meta'])->query(function (Builder $query, array $data): Builder {
+                SelectFilter::make('provider')->options(['openai' => 'OpenAI', 'anthropic' => 'Anthropic', 'gemini' => 'Google', 'mistral' => 'Mistral', 'meta' => 'Meta'])->query(function (Builder $query, array $data): Builder {
                     $value = $data['value'] ?? null;
-                    $patterns = ['OpenAI' => ['gpt', 'o1', 'o3', 'o4'], 'Anthropic' => ['claude'], 'Google' => ['gemini'], 'Mistral' => ['mistral'], 'Meta' => ['llama']];
+                    $patterns = ['openai' => ['gpt', 'o1', 'o3', 'o4'], 'anthropic' => ['claude'], 'gemini' => ['gemini'], 'mistral' => ['mistral'], 'meta' => ['llama']];
 
                     return $query->when($value, function (Builder $query) use ($patterns, $value): void {
                         $query->where(function (Builder $query) use ($patterns, $value): void {
-                            foreach ($patterns[$value] ?? [] as $pattern) {
-                                $query->orWhere('model', 'like', "%{$pattern}%");
-                            }
+                            $query->where('provider', $value)
+                                ->orWhere(function (Builder $query) use ($patterns, $value): void {
+                                    $query->whereNull('provider')
+                                        ->where(function (Builder $query) use ($patterns, $value): void {
+                                            foreach ($patterns[$value] ?? [] as $pattern) {
+                                                $query->orWhere('model', 'like', "%{$pattern}%");
+                                            }
+                                        });
+                                });
                         });
                     });
                 }),
@@ -193,7 +211,7 @@ final class AiAdmin
                 TextEntry::make('user.name')->label('User'),
                 TextEntry::make('cv_id')->label('CV')->formatStateUsing(fn ($state): string => CV::query()->find($state)?->title ?? '—'),
                 TextEntry::make('feature')->label('Request Type')->badge(),
-                TextEntry::make('provider')->label('AI Provider')->state(fn ($record): string => self::provider($record->model))->badge(),
+                TextEntry::make('provider')->label('AI Provider')->state(fn ($record): string => self::provider($record->model, $record->provider))->badge(),
                 TextEntry::make('model')->label('AI Model'),
                 TextEntry::make('status')->badge()->formatStateUsing(fn ($state): string => self::statusLabel($state))->color(fn ($state): string => self::statusColor($state)),
                 TextEntry::make('tokens_used')->label('Credits Used')->numeric(),

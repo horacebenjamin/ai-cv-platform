@@ -87,7 +87,6 @@ final class AIRequestService
         $request->forceFill(['status' => 'failed'])->save();
 
         Log::error('AI request failed.', $this->logContext($request, [
-            'error' => $exception->getMessage(),
             'exception' => $exception::class,
         ]));
     }
@@ -99,7 +98,7 @@ final class AIRequestService
     {
         return $extra + [
             'ai_request_id' => $request->getKey(),
-            'provider' => config('ai.default_provider'),
+            'provider' => $request->provider ?? config('ai.default_provider'),
             'model' => $request->model,
             'duration' => $request->processing_time_ms,
             'cost' => $request->cost,

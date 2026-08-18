@@ -8,12 +8,15 @@ use App\Services\AI\AIService;
 use App\Services\AI\AIUsageService;
 use App\Services\AI\PromptCompiler;
 use App\Services\AI\PromptTemplateService;
+use App\Services\CV\CVGenerationService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use Throwable;
+use UnexpectedValueException;
 
 class ProcessAIRequest implements ShouldQueue
 {
@@ -37,10 +40,22 @@ class ProcessAIRequest implements ShouldQueue
         AIUsageService $usage,
         PromptCompiler $compiler,
         PromptTemplateService $templates,
+        CVGenerationService $cvGeneration,
     ): void {
         $request = AiRequest::query()->findOrFail($this->aiRequestId);
 
         if ($request->status === 'completed') {
+            return;
+        }
+
+        if ($request->feature === 'cv_generation') {
+            try {
+                $cvGeneration->process($request);
+            } catch (ValidationException|UnexpectedValueException|InvalidArgumentException $exception) {
+                $requests->fail($request, $exception);
+                $this->fail($exception);
+            }
+
             return;
         }
 
@@ -60,7 +75,7 @@ class ProcessAIRequest implements ShouldQueue
             Log::warning('AI request attempt failed.', [
                 'ai_request_id' => $request->getKey(),
                 'attempt' => $this->attempts(),
-                'error' => $exception->getMessage(),
+                'exception' => $exception::class,
             ]);
 
             if ($this->isNonRetryable($exception)) {

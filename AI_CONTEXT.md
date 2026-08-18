@@ -21,7 +21,7 @@ The authenticated customer UI is an Inertia/Vue application. Operational and con
 - Filament 5 with Livewire 4
 - Pest 3
 - Laravel Sail for all local commands
-- `laravel/ai` 0.10 is installed, but the current request path uses the application-owned `AIProviderInterface` and `OpenAIService`, which calls the OpenAI Responses API directly
+- `laravel/ai` 0.10 is installed; CV generation uses the SDK `GenerateCvAgent`, while generic text requests temporarily continue through the application-owned `AIProviderInterface` and `OpenAIService`
 
 Check installed versions before using package APIs. Do not infer an API version from this document.
 
@@ -32,7 +32,7 @@ Check installed versions before using package APIs. Do not infer an API version 
 3. Search version-specific Laravel documentation through Laravel Boost before code changes.
 4. Follow neighbouring files for naming, structure, types, and conventions.
 5. Keep controllers and Filament resources thin; domain behaviour belongs in services and queued jobs.
-6. Preserve provider independence by depending on `AIProviderInterface`, not `OpenAIService`, outside provider configuration and provider-specific tests.
+6. CV generation uses Laravel AI SDK provider configuration; the temporary generic path must continue to depend on `AIProviderInterface`, not `OpenAIService`, until its migration is approved.
 7. Treat model output as untrusted. Parse and validate it before writing domain records.
 8. Keep CV generation writes, history creation, request completion, and credit deduction atomic.
 9. Never expose API keys, full sensitive prompts, CV content, or personal profile data in logs or exceptions.
@@ -49,6 +49,7 @@ Check installed versions before using package APIs. Do not infer an API version 
 | Admin panel | `app/Filament` |
 | Domain models | `app/Models` |
 | AI orchestration | `app/Services/AI` |
+| Laravel AI SDK agents | `app/Ai/Agents` |
 | CV generation | `app/Services/CV` |
 | Queue worker | `app/Jobs/ProcessAIRequest.php` |
 | AI configuration | `config/ai.php` |
@@ -59,24 +60,24 @@ Check installed versions before using package APIs. Do not infer an API version 
 
 1. A feature service creates an `AiRequest` through `AIRequestService`.
 2. `ProcessAIRequest` is dispatched to the configured database queue.
-3. The job marks the request as processing and selects the configured provider through `AIService`.
-4. `PromptTemplateService` and `PromptCompiler` build the prompt where the feature needs a template.
-5. The provider returns a provider-specific payload; `ResponseParser` normalises text, model, token usage, duration, and estimated cost.
-6. `AIUsageService` converts token usage into cost and consumed credits.
+3. For generic text features, the job marks the request as processing, compiles templates, and uses the legacy `AIService` provider pipeline.
+4. For `cv_generation`, `CVGenerationService` validates ownership and input, builds explicitly labelled context, and synchronously prompts `GenerateCvAgent` inside the existing application job.
+5. Laravel AI SDK returns structured CV data plus normalized usage and actual provider/model metadata.
+6. `AIUsageService` converts usage into application-configured cost and consumed credits.
 7. The request is completed or marked failed. CV-linked operations may also create history records.
 
-`cv_generation` has a specialised branch in `CVGenerationService`: it verifies ownership and inputs, requests JSON, parses and validates the response, builds the CV and child sections, creates a complete history snapshot, completes the AI request, and deducts credits in one database transaction.
+`cv_generation` has a specialised SDK branch in `CVGenerationService`: it verifies ownership and inputs, requests structured output through `GenerateCvAgent`, validates the normalized array, and then builds the CV and child sections, creates a complete history snapshot, completes the AI request, and deducts credits in one database transaction. The provider call remains outside the transaction.
 
 ## AI Contracts and Invariants
 
 - Supported prompt placeholders are defined in `PromptCompiler::PLACEHOLDERS`.
 - Named prompts are defined by `PromptTemplateService`; unknown templates without a fallback are invalid.
-- Providers implement `generate`, `healthCheck`, `estimateCost`, and `modelName`.
-- Normalised generation results contain content, provider, model, input/output/total tokens, processing time, and estimated cost.
+- Legacy generic providers implement `generate`, `healthCheck`, `estimateCost`, and `modelName`.
+- CV generation receives provider, model, and input/output token usage from Laravel AI SDK response metadata and persists a normalized structured response rather than the raw provider payload.
 - AI request states are `queued`, `processing`, `completed`, and `failed`.
 - `ProcessAIRequest` tries three times with 10, 30, and 60 second backoffs and a 120 second timeout.
 - Invalid input and non-retryable HTTP responses fail immediately; transient failures are allowed to retry.
-- Generated CV JSON must have `title`, `summary`, and every configured section array. Required item fields are enforced by `CVValidationService`.
+- Generated CV structured output must have `title`, `summary`, and every configured section array. SDK schema enforcement supplements but does not replace `CVValidationService` domain validation.
 - Credit entries are negative for usage. Token-to-credit and cost rates come from `config/ai.php` and environment variables.
 
 ## Local Workflow
@@ -108,13 +109,16 @@ AI settings are declared in `.env.example` and consumed by `config/ai.php`. Impo
 
 - `AI_PROVIDER`
 - `OPENAI_API_KEY`
+- `OPENAI_BASE_URL`
 - `OPENAI_MODEL`
+- `OPENAI_STORE`
 - `OPENAI_MAX_TOKENS`
 - `OPENAI_TIMEOUT`
 - `OPENAI_INPUT_COST_PER_MILLION`
 - `OPENAI_OUTPUT_COST_PER_MILLION`
 - `AI_TOKENS_PER_CREDIT`
 - `AI_MINIMUM_CREDITS`
+- `DB_QUEUE_RETRY_AFTER`
 
 Never commit real credentials. Queue processing requires a running worker because `QUEUE_CONNECTION` is database-backed by default.
 
@@ -122,5 +126,5 @@ Never commit real credentials. Queue processing requires a running worker becaus
 
 - The customer-facing Inertia pages currently cover the Laravel Breeze shell, authentication, dashboard, and profile. Most domain management exists in Filament.
 - `CVExportService` is a reserved placeholder; export is not implemented.
-- Provider configuration is extensible, but only the OpenAI driver is configured in `config/ai.php`.
-- Installing `laravel/ai` does not by itself migrate the current custom provider pipeline to SDK agents.
+- Provider configuration is extensible, but only the OpenAI driver is configured in `config/ai.php`. Provider-side OpenAI response storage defaults to disabled.
+- CV generation has migrated to Laravel AI SDK. Generic text generation still uses the legacy provider pipeline; both paths deliberately coexist during the phased migration.

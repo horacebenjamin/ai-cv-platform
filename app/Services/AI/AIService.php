@@ -15,7 +15,7 @@ final class AIService
     public function provider(?string $name = null): AIProviderInterface
     {
         $name ??= (string) config('ai.default_provider', 'openai');
-        $driver = config("ai.providers.{$name}.driver");
+        $driver = config("ai.providers.{$name}.legacy_driver", config("ai.providers.{$name}.driver"));
 
         if (! is_string($driver) || $driver === '') {
             throw new InvalidArgumentException("AI provider [{$name}] is not configured.");

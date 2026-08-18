@@ -14,7 +14,8 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(AIProviderInterface::class, function ($app): AIProviderInterface {
-            $driver = config('ai.providers.'.config('ai.default_provider').'.driver');
+            $provider = config('ai.default_provider');
+            $driver = config("ai.providers.{$provider}.legacy_driver", config("ai.providers.{$provider}.driver"));
 
             return $app->make($driver);
         });

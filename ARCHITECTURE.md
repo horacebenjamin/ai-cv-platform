@@ -20,7 +20,8 @@ Browser
              |
           MySQL 8.4
 
-AI services --> configured provider --> OpenAI Responses API
+CV generation --> GenerateCvAgent --> Laravel AI SDK --> configured provider
+Generic AI services --> legacy provider boundary --> OpenAI Responses API
 ```
 
 The codebase favours a modular monolith: domains share one Laravel application and database, while orchestration is separated into narrowly focused services.
@@ -83,25 +84,25 @@ Foreign keys generally cascade when their owning aggregate is deleted. A CV vari
 
 ## AI Subsystem
 
-### Provider boundary
+### Coexisting provider boundaries
 
-`AIProviderInterface` defines the application-owned provider contract. `AIService` resolves a configured provider driver from the Laravel container, calls it, measures elapsed time, and delegates response normalisation to `ResponseParser`.
+CV generation uses `GenerateCvAgent` under `app/Ai/Agents`. The agent implements Laravel AI SDK's `Agent` and `HasStructuredOutput` contracts, owns the CV-generation instructions and schema, and does not perform persistence or accounting. The SDK owns provider transport, structured response decoding, normalized usage, and provider/model metadata for this path.
 
-`OpenAIService` is the configured implementation. It calls `/v1/responses` with Laravel's HTTP client, supplies model and generation limits, and reads pricing configuration to estimate cost.
+Generic text generation temporarily retains the application-owned `AIProviderInterface`. `AIService` resolves its legacy driver, calls it, measures elapsed time, and delegates response normalization to `ResponseParser`. `OpenAIService` remains the configured legacy implementation.
 
-Although the Laravel AI SDK package is installed, this path currently does not use SDK `Agent` classes or the `Promptable` trait. A future migration should be an explicit architecture change, retaining the application-level provider boundary or deliberately replacing it with tested equivalents.
+`config/ai.php` temporarily contains both SDK-compatible OpenAI keys and a `legacy_driver`. Both paths therefore share credentials, model, timeout, pricing, and accounting configuration without changing the generic runtime path. Provider-side SDK response storage is disabled by default for CV/profile privacy.
 
 ### Prompt composition
 
-`PromptTemplateService` owns the supported feature templates:
+`GenerateCvAgent` owns CV-generation instructions and receives explicitly labelled JSON context. `PromptTemplateService` continues to own the generic feature templates:
 
-- CV generation and rewrite;
+- CV rewrite;
 - professional summary;
 - skills optimisation;
 - cover letter;
 - job-match analysis.
 
-`PromptCompiler` replaces a fixed allow-list of placeholders. Arrays and objects are encoded as readable JSON, missing values become empty strings, and unknown placeholders are not dynamically evaluated.
+`PromptCompiler` continues to replace a fixed allow-list of placeholders for generic text requests. Arrays and objects are encoded as readable JSON, missing values become empty strings, and unknown placeholders are not dynamically evaluated.
 
 ### Request orchestration
 
@@ -118,12 +119,14 @@ AIRequestService::create --> ai_requests: queued
    v
 ProcessAIRequest
    |-- generic feature --> compile --> provider --> normalise --> complete
-   `-- cv_generation --> CVGenerationService
+   `-- cv_generation --> CVGenerationService --> GenerateCvAgent
                             |-- verify ownership and active template
                             |-- build profile/job context
-                            |-- request structured JSON
-                            |-- parse and validate
+                            |-- request SDK structured output
+                            |-- read SDK usage + provider/model metadata
+                            |-- validate normalized data
                             `-- transaction
+                                 |-- lock/reload request and check idempotency
                                  |-- create CV and section rows
                                  |-- create history snapshot
                                  |-- complete AI request
@@ -135,14 +138,16 @@ ProcessAIRequest
 - Malformed configuration, invalid domain input, and selected 4xx provider responses are non-retryable.
 - Other exceptions are rethrown so the queue can apply retry and backoff policy.
 - The queue failure hook ensures an exhausted request reaches `failed` state.
-- CV records, their sections, history, request completion, and credit deduction are committed together, preventing partial generated CVs.
+- CV records, their sections, history, request completion, and credit deduction are committed together, preventing partial generated CVs. The provider call occurs before this transaction.
+- The request is reloaded with a row lock before CV persistence; an already-completed request does not create a duplicate CV, history record, or credit deduction.
 
 ## CV Generation Components
 
 | Component | Responsibility |
 | --- | --- |
+| `GenerateCvAgent` | Defines CV instructions and structured output schema, and invokes the configured provider through Laravel AI SDK |
 | `CVGenerationService` | Coordinates queueing, context construction, generation, validation, and the transaction |
-| `CVJsonParser` | Removes an optional Markdown JSON fence and decodes a top-level JSON object |
+| `CVJsonParser` | Retained temporarily with the legacy stack but no longer used by CV generation |
 | `CVValidationService` | Enforces the generated CV shape and required section fields |
 | `CVBuilderService` | Creates the CV aggregate and allow-lists attributes for each child section |
 | `CVHistoryService` | Captures a loaded, complete CV snapshot |
@@ -152,7 +157,7 @@ The generation prompt instructs the provider to use supplied facts only. That in
 
 ## Data and Accounting
 
-`ai_requests` is the audit record for prompt, response, model, status, token use, cost, and processing time. Credits are append-only entries in `credit_transactions`; AI consumption creates negative amounts. Subscription records hold plan state and the remaining-credit value.
+`ai_requests` is the audit record for prompt, normalized response, actual provider, model, status, token use, cost, and processing time. Legacy rows may have a null provider and the admin UI falls back to model-name inference for those records. Credits are append-only entries in `credit_transactions`; AI consumption creates negative amounts. Subscription records hold plan state and the remaining-credit value.
 
 Pricing and credit conversion are configuration-driven. `AIUsageService` calculates:
 
@@ -173,15 +178,15 @@ Cost and credits are different units and should not be conflated in UI labels or
 
 ## Testing Strategy
 
-Feature tests use Pest with `RefreshDatabase`. `FakeAIProvider` supplies deterministic provider responses without network access.
+Feature tests use Pest with `RefreshDatabase`. CV generation uses the SDK's `GenerateCvAgent::fake()` support with structured responses, explicit usage/meta where accounting is asserted, prompt assertions, and stray-prompt prevention. `FakeAIProvider` remains for generic legacy requests.
 
-The AI engine tests cover prompt compilation, queue dispatch, request transitions, normalised usage/cost/credits, failure state, and the outgoing OpenAI request shape. CV generation tests cover a complete aggregate, invalid JSON, provider failure without partial writes, empty-profile rejection, credits, and history snapshots.
+The AI engine tests cover the legacy generic prompt compilation, queue dispatch, request transitions, normalized usage/cost/credits, failure state, and outgoing OpenAI request shape. CV generation tests cover request transitions, the complete aggregate and sections, structured domain validation, agent failure, empty and invalid input, idempotency, provider/model usage accounting, history, credits, and transactional rollback.
 
 Tests should target the service or feature boundary that owns the behaviour. Provider calls should be faked; real API credentials are never required by the test suite.
 
 ## Extension Points
 
-- Add providers by implementing `AIProviderInterface` and registering a driver in `config/ai.php`.
+- Add SDK providers for CV generation through Laravel AI configuration. Generic providers still require `AIProviderInterface` until the generic path is migrated.
 - Add AI features by defining a stable feature name and prompt, then routing any specialised persistence through a domain service.
 - Add customer workflows as Inertia pages and named Laravel routes; keep admin-only operations in Filament.
 - Implement CV export behind `CVExportService` so output formats do not leak into the CV generation workflow.
