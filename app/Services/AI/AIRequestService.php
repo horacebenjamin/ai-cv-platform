@@ -21,7 +21,7 @@ final class AIRequestService
             'feature' => $attributes['feature'],
             'prompt' => $attributes['prompt'],
             'response' => null,
-            'model' => $attributes['model'] ?? config('ai.providers.'.config('ai.default_provider').'.model'),
+            'model' => $attributes['model'] ?? config('ai.providers.'.config('ai.default').'.models.text.default'),
             'tokens_used' => 0,
             'cost' => 0,
             'status' => 'queued',
@@ -131,7 +131,7 @@ final class AIRequestService
     {
         return $extra + [
             'ai_request_id' => $request->getKey(),
-            'provider' => $request->provider ?? config('ai.default_provider'),
+            'provider' => $request->provider ?? config('ai.default'),
             'model' => $request->model,
             'duration' => $request->processing_time_ms,
             'cost' => $request->cost,

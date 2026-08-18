@@ -20,7 +20,6 @@ use Laravel\Ai\Responses\StructuredTextResponse;
 
 beforeEach(function (): void {
     config()->set('ai.default', 'openai');
-    config()->set('ai.providers.openai.model', 'fake-model');
     config()->set('ai.providers.openai.models.text.default', 'fake-model');
     config()->set('ai.providers.openai.input_cost_per_million', 1);
     config()->set('ai.providers.openai.output_cost_per_million', 2);

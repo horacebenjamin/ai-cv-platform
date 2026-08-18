@@ -84,13 +84,28 @@ Foreign keys generally cascade when their owning aggregate is deleted. A CV vari
 
 ## AI Subsystem
 
-### Dual-agent SDK boundary
+### Agent and SDK boundary
 
 CV generation uses `GenerateCvAgent` under `app/Ai/Agents`. The agent implements Laravel AI SDK's `Agent` and `HasStructuredOutput` contracts, owns the CV-generation instructions and schema, and does not perform persistence or accounting.
 
 Supported generic text generation uses `CareerContentAgent`. It implements the SDK `Agent` contract with `Promptable`, owns the explicit feature allow-list and feature-specific instructions, and produces plain text without persistence, accounting, queue, or provider-specific concerns.
 
-The SDK owns provider transport, normalized response usage, and actual provider/model metadata for both paths. `config/ai.php` temporarily retains `legacy_driver` and compatibility keys because `AIProviderInterface`, `AIService`, `OpenAIService`, and `ResponseParser` remain in the repository for Phase 3 cleanup. They are no longer used by either migrated generation path. Provider-side SDK response storage is disabled by default for CV/profile privacy.
+Laravel AI SDK is the sole provider boundary. It owns provider transport, normalized response usage, and actual provider/model metadata for both paths. Agents own instructions and output contracts; application services own request lifecycle, accounting, validation, transactions, history, and persistence. Provider-side SDK response storage is disabled by default for CV/profile privacy.
+
+```text
+ProcessAIRequest
+|-- GenerateCvAgent
+`-- CareerContentAgent
+          |
+          v
+Laravel AI SDK providers
+          |
+          v
+AIUsageService / AIRequestService
+          |
+          v
+Domain validation, transactions, history, and persistence
+```
 
 ### Prompt composition
 
@@ -102,7 +117,7 @@ The SDK owns provider transport, normalized response usage, and actual provider/
 - cover letter;
 - job-match analysis.
 
-Generic structured request context is passed to the agent as labelled JSON instead of placeholder substitution. A legacy plain prompt is wrapped as a labelled `request` field only when its request feature is approved. Unknown features and malformed structured context are rejected before prompting. `PromptCompiler` and `PromptTemplateService` remain present but unused pending Phase 3 review; their pre-existing CV-template changes are retained.
+Generic structured request context is passed to the agent as labelled JSON. A plain prompt is wrapped as a labelled `request` field only when its request feature is approved. Unknown features and malformed structured context are rejected before prompting.
 
 ### Request orchestration
 
@@ -150,7 +165,6 @@ ProcessAIRequest
 | --- | --- |
 | `GenerateCvAgent` | Defines CV instructions and structured output schema, and invokes the configured provider through Laravel AI SDK |
 | `CVGenerationService` | Coordinates queueing, context construction, generation, validation, and the transaction |
-| `CVJsonParser` | Retained temporarily with the legacy stack but no longer used by CV generation |
 | `CVValidationService` | Enforces the generated CV shape and required section fields |
 | `CVBuilderService` | Creates the CV aggregate and allow-lists attributes for each child section |
 | `CVHistoryService` | Captures a loaded, complete CV snapshot |
@@ -181,7 +195,7 @@ Cost and credits are different units and should not be conflated in UI labels or
 
 ## Testing Strategy
 
-Feature tests use Pest with `RefreshDatabase`. CV generation uses `GenerateCvAgent::fake()` with structured responses; generic generation uses `CareerContentAgent::fake()` with text responses. Both provide explicit usage/meta where accounting is asserted, inspect prompts at the application boundary, and prevent stray prompts. `FakeAIProvider` remains in the repository but is no longer used by migrated-path tests.
+Feature tests use Pest with `RefreshDatabase`. CV generation uses `GenerateCvAgent::fake()` with structured responses; generic generation uses `CareerContentAgent::fake()` with text responses. Both provide explicit usage/meta where accounting is asserted, inspect prompts at the application boundary, and prevent stray prompts. No external provider calls or custom provider fakes are used in AI feature tests.
 
 The AI engine tests cover all approved generic feature instructions and context, queue dispatch, request transitions, normalized SDK text and metadata, usage/cost/credits, unknown and malformed input, retry/exhaustion behavior, and idempotency. CV generation tests cover request transitions, the complete aggregate and sections, structured domain validation, agent failure, empty and invalid input, idempotency, provider/model usage accounting, history, credits, and transactional rollback. Tests also prove CV generation does not invoke the generic agent.
 

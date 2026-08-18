@@ -32,7 +32,7 @@ Check installed versions before using package APIs. Do not infer an API version 
 3. Search version-specific Laravel documentation through Laravel Boost before code changes.
 4. Follow neighbouring files for naming, structure, types, and conventions.
 5. Keep controllers and Filament resources thin; domain behaviour belongs in services and queued jobs.
-6. Both active AI generation paths use Laravel AI SDK provider configuration. The legacy provider stack remains temporarily present for Phase 3 cleanup but is not used by migrated requests.
+6. Laravel AI SDK is the sole provider boundary for both AI generation paths.
 7. Treat model output as untrusted. Parse and validate it before writing domain records.
 8. Keep CV generation writes, history creation, request completion, and credit deduction atomic.
 9. Never expose API keys, full sensitive prompts, CV content, or personal profile data in logs or exceptions.
@@ -54,7 +54,7 @@ Check installed versions before using package APIs. Do not infer an API version 
 | Queue worker | `app/Jobs/ProcessAIRequest.php` |
 | AI configuration | `config/ai.php` |
 | Schema | `database/migrations` |
-| Tests and AI fake | `tests/Feature`, `tests/Fakes/FakeAIProvider.php` |
+| AI feature tests | `tests/Feature` |
 
 ## AI Request Lifecycle
 
@@ -73,9 +73,8 @@ The generic SDK branch supports `cv_rewrite`, `professional_summary`, `skills_op
 ## AI Contracts and Invariants
 
 - Supported generic feature names and behavioral instructions are explicitly allow-listed by `CareerContentAgent`.
-- Generic requests may contain structured `context` or a legacy plain prompt, which is passed as a labelled `request` context only for an approved feature.
+- Generic requests may contain structured `context` or a plain prompt, which is passed as a labelled `request` context only for an approved feature.
 - Both agents receive provider, model, and input/output token usage from Laravel AI SDK response metadata. CV generation persists normalized structured content; generic generation persists normalized text only, never the raw provider payload.
-- `PromptCompiler`, `PromptTemplateService`, and the legacy provider contracts remain in the repository but are not on an active migrated path.
 - AI request states are `queued`, `processing`, `completed`, and `failed`.
 - `ProcessAIRequest` tries three times with 10, 30, and 60 second backoffs and a 120 second timeout.
 - Invalid input and non-retryable HTTP responses fail immediately; transient failures are allowed to retry.
@@ -129,4 +128,5 @@ Never commit real credentials. Queue processing requires a running worker becaus
 - The customer-facing Inertia pages currently cover the Laravel Breeze shell, authentication, dashboard, and profile. Most domain management exists in Filament.
 - `CVExportService` is a reserved placeholder; export is not implemented.
 - Provider configuration is extensible, but only the OpenAI driver is configured in `config/ai.php`. Provider-side OpenAI response storage defaults to disabled.
-- The legacy provider stack is intentionally retained pending Phase 3 review even though both active generation paths now use Laravel AI SDK.
+- Laravel AI SDK owns provider interaction, agents own instructions and output contracts, and application services own lifecycle, accounting, validation, transactions, history, and persistence.
+- AI tests use SDK agent fakes and prevent stray prompts; no custom provider fake is maintained.

@@ -40,7 +40,7 @@ final class CVGenerationService
                 'target_job_id' => $targetJob?->getKey(),
                 'template_id' => $template?->getKey(),
             ], JSON_THROW_ON_ERROR),
-            'model' => config('ai.providers.'.config('ai.default_provider').'.model'),
+            'model' => config('ai.providers.'.config('ai.default').'.models.text.default'),
         ]);
     }
 

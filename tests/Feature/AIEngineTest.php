@@ -14,8 +14,6 @@ use Laravel\Ai\Responses\TextResponse;
 
 beforeEach(function (): void {
     config()->set('ai.default', 'openai');
-    config()->set('ai.default_provider', 'openai');
-    config()->set('ai.providers.openai.model', 'requested-model');
     config()->set('ai.providers.openai.models.text.default', 'requested-model');
     config()->set('ai.providers.openai.input_cost_per_million', 1);
     config()->set('ai.providers.openai.output_cost_per_million', 2);
@@ -87,6 +85,16 @@ it('queues an AI request and transitions it to queued', function (): void {
 
     expect($request->refresh()->status)->toBe('queued');
     Queue::assertPushed(ProcessAIRequest::class, fn (ProcessAIRequest $job): bool => $job->aiRequestId === $request->id);
+});
+
+it('uses the configured SDK provider model when a request does not specify one', function (): void {
+    $request = app(AIRequestService::class)->create([
+        'user_id' => User::factory()->create()->id,
+        'feature' => 'professional_summary',
+        'prompt' => json_encode(['context' => ['profile' => 'Backend engineer']], JSON_THROW_ON_ERROR),
+    ], queue: false);
+
+    expect($request->model)->toBe('requested-model');
 });
 
 it('routes every supported generic feature to labelled agent context and feature instructions', function (string $feature, array $context, array $instructionFragments): void {
