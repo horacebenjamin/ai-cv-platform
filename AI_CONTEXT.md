@@ -2,14 +2,80 @@
 
 This file is the fast-start context for coding assistants working on the AI CV Platform. Read [ARCHITECTURE.md](ARCHITECTURE.md) for the system design and `AGENTS.md` for mandatory project instructions.
 
-## Product
+## Product Purpose
 
-The application is an AI-assisted career platform for:
+AI CV Platform is an **AI-powered job application workspace**. It helps job seekers:
 
-- generating and maintaining CVs and job-specific CV variants;
-- drafting cover letters and professional summaries;
-- analysing job descriptions and tracking applications;
-- recording AI usage, cost, credits, and CV history.
+- maintain a factual career profile as their source of truth;
+- create and manage multiple CV versions;
+- tailor CVs to specific job descriptions;
+- generate cover letters from real profile and CV data;
+- compare their experience with job requirements;
+- track saved jobs, applications, interviews, outcomes, and next actions;
+- reduce repetitive application work; and
+- improve the relevance, consistency, and organisation of their applications.
+
+The product supports the full, repeatable job-application workflow rather than only generating one-off CVs. It is not a generic chatbot: AI should appear in the context of a concrete job-search task and use the user's stored factual context.
+
+## Primary Users
+
+The primary users are professional job seekers, including software engineers, designers, product managers, analysts, graduates, career changers, people returning to the job market, people who have been made redundant, and other professionals applying to multiple roles.
+
+A particularly strong use case is a person who already has useful experience but needs to tailor many applications efficiently without repeatedly re-entering or inconsistently rewriting the same career facts.
+
+## Core User Journey
+
+The intended end-to-end journey is:
+
+```text
+Career Profile
+  -> Save Job
+  -> Analyse Job Description
+  -> Tailor CV
+  -> Generate Cover Letter
+  -> Review / Edit
+  -> Export Documents
+  -> Mark Application as Applied
+  -> Track Screening / Interview / Offer / Rejection
+```
+
+This journey is product direction, not a claim that every step is available in the customer UI today.
+
+### Current capabilities
+
+- The domain includes profiles, relational CVs and CV variants, cover letters, companies, job descriptions, saved jobs, and job applications.
+- CV generation can use a `Profile`, sections from the user's latest CV, and an optional `JobDescription` as factual context.
+- The generic AI path supports CV rewriting, professional-summary generation, skills optimisation, cover-letter generation, and job-match analysis.
+- Filament provides most current domain-management workflows. The customer-facing Inertia application currently provides the Breeze shell, authentication, dashboard, and account-profile editing.
+- Applications can record progress statuses and notes. Document export is not implemented; `CVExportService` is a reserved boundary.
+
+### Intended product direction
+
+- Make the career profile a complete factual source of truth. At present, identity and summary data live in `Profile`, while detailed career facts used for generation come from CV section records.
+- Join saved opportunities, job analysis, tailored CVs, cover letters, applications, interviews, outcomes, and next actions into a coherent customer workflow.
+- Associate CVs and cover letters with specific job opportunities where relevant. Do not assume these database relationships already exist: current CVs only retain a target job title, and cover letters retain company/job-title text plus an optional CV link.
+- Add review, editing, and export experiences behind the existing domain and service boundaries rather than presenting disconnected AI prompt boxes.
+
+## Product Principles
+
+- The career profile is the factual source of truth.
+- AI must not invent employment history, education, projects, certifications, skills, dates, achievements, contact information, or other personal details.
+- AI transforms, organises, and tailors real user data; it does not fabricate credentials.
+- AI functionality should normally be exposed as a workflow action, not as a generic prompt box.
+- CVs and cover letters should be associated with specific job opportunities where relevant, while respecting which relationships are actually implemented.
+- The product should reduce application-preparation time while improving relevance, consistency, and organisation.
+- Features should support repeat job-search workflows rather than one-off document generation.
+- Business and product decisions should favour useful job-search outcomes over adding AI features for novelty.
+
+## Product Positioning
+
+The product is best understood as **an AI-powered job application workspace**. Its value comes from connecting:
+
+```text
+career profile -> jobs -> tailored CVs -> cover letters -> applications -> interviews and outcomes
+```
+
+Use this positioning to guide implementation choices without making unsupported claims about market leadership, guaranteed interviews, or employment outcomes.
 
 The authenticated customer UI is an Inertia/Vue application. Operational and content-management screens live in the Filament panel at `/admin`.
 

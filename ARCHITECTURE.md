@@ -2,7 +2,7 @@
 
 ## Overview
 
-AI CV Platform is a Laravel monolith with two presentation surfaces, shared Eloquent domain models, service-layer orchestration, queued AI processing, and a MySQL datastore.
+AI CV Platform is an AI-powered job application workspace implemented as a Laravel monolith with two presentation surfaces, shared Eloquent domain models, service-layer orchestration, queued AI processing, and a MySQL datastore.
 
 ```text
 Browser
@@ -27,6 +27,53 @@ Generic career content --> CareerContentAgent --> Laravel AI SDK --> configured 
 ```
 
 The codebase favours a modular monolith: domains share one Laravel application and database, while orchestration is separated into narrowly focused services.
+
+## Product and Domain View
+
+The product is organised around a job seeker's repeated application workflow, not around isolated AI generations:
+
+```text
+Career Profile
+  -> Jobs
+  -> Tailored CVs
+  -> Cover Letters
+  -> Applications
+  -> Interviews and Outcomes
+```
+
+The conceptual ownership view is:
+
+```text
+User
+|-- Career Profile
+|-- CVs
+|-- Cover Letters
+|-- Jobs
+`-- Applications
+
+AI workflows
+|-- CV generation / tailoring
+|-- Professional summary generation
+|-- Skills optimisation
+|-- Cover letter generation
+`-- Job-match analysis
+```
+
+This is a product/domain map, not an entity-relationship diagram. The current persistence model is documented under [Domain Model](#domain-model); intended links that do not yet exist are called out below rather than implied as implemented.
+
+### Domain responsibilities
+
+- The career profile is the product's intended factual source of truth. Currently, `Profile` stores identity, contact, headline, and biography data, while detailed experience, education, skills, projects, certifications, languages, and references are stored as sections of CV records. CV generation combines the profile with sections from the user's latest CV.
+- CVs are user-owned, independently editable documents. The current model supports master CVs and parent/variant relationships. An optional `JobDescription` may inform generation, but the resulting CV stores only `target_job_title`; it has no persisted job relationship.
+- Cover letters are user-owned and can optionally belong to a CV. They currently store company and job-title text and do not have foreign keys to a saved job, job description, or application.
+- Saved jobs represent opportunities a user wants to retain and may reference a company and job description. Job applications represent progress through an opportunity and may reference a company, job description, and CV at the schema level.
+- AI workflows transform supplied factual context. Agents own instructions and output contracts; application services retain ownership of validation, authorisation, request state, persistence, history, transactions, usage accounting, and credits.
+
+### Intended workflow relationships
+
+The intended direction is for a saved opportunity to provide job context for analysis, a tailored CV, and a cover letter, then flow into an application whose screening, interview, offer, rejection, and other outcomes can be tracked. CVs and cover letters should be associated with a specific job or application where that improves traceability.
+
+Those links are not all implemented. In particular, there is no direct CV-to-job relationship, cover letters are not linked to jobs or applications, saved jobs and applications are separate records, and export is still a reserved service boundary. New work must inspect the current schema and models before relying on a conceptual link.
 
 ## Runtime Topology
 
@@ -91,18 +138,43 @@ User
   |     |   Projects, Certifications, Languages, and References
   |     |-- has many CoverLetters
   |     `-- has many CvHistories
-  |-- has many SavedJobs and JobApplications
+  |-- has many CoverLetters
+  |-- has many SavedJobs
+  |-- has many JobApplications
   |-- has many AiRequests
   |-- has many Subscriptions
-  `-- has many CreditTransactions
+  |-- has many CreditTransactions
+  `-- has many CvHistories
 
 Company
   |-- has many JobDescriptions
   |-- has many SavedJobs
   `-- has many JobApplications
+
+JobDescription
+  |-- belongs to Company
+  |-- has many SavedJobs
+  `-- has many JobApplications
+
+SavedJob
+  |-- belongs to User
+  |-- belongs to optional Company
+  `-- belongs to optional JobDescription
+
+JobApplication
+  |-- belongs to User
+  |-- belongs to Company
+  |-- belongs to optional JobDescription
+  `-- has optional cv_id in the database
+
+CoverLetter
+  |-- belongs to User
+  `-- belongs to optional CV
 ```
 
 The CV aggregate is relational rather than a single JSON document. Ordered sections use `sort_order` where applicable. `CvHistory.snapshot` is the deliberate denormalised record of a complete CV state at an event in time.
+
+`job_applications.cv_id` is an optional foreign key used by the admin workflow, but `JobApplication` does not currently define a `cv()` Eloquent relationship. Treat the schema and declared model relationships above as the current source of truth; do not infer inverse or cross-workflow relationships from the conceptual product map.
 
 Foreign keys generally cascade when their owning aggregate is deleted. A CV variant's `parent_cv_id` is set to null when its parent is removed.
 
@@ -142,6 +214,8 @@ Domain validation, transactions, history, and persistence
 - job-match analysis.
 
 Generic structured request context is passed to the agent as labelled JSON. A plain prompt is wrapped as a labelled `request` field only when its request feature is approved. Unknown features and malformed structured context are rejected before prompting.
+
+The generic AI path returns normalized text and does not by itself create a cover letter, link a CV to a job, or advance an application. Product features that need those effects must coordinate them explicitly in the application/domain layer.
 
 ### Request orchestration
 
