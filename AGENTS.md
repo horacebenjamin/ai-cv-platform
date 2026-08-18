@@ -36,6 +36,14 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 
 - If the user doesn't see a frontend change reflected in the UI, it could mean they need to run `vendor/bin/sail npm run build`, `vendor/bin/sail npm run dev`, or `vendor/bin/sail composer run dev`. Ask them.
 
+## Frontend UI Rules
+
+- Customer-facing pages use Inertia + Vue 3 + shadcn-vue + Tailwind CSS; until shadcn-vue is installed, treat it as the intended default component system for future customer UI work.
+- Admin pages use Filament. Never use Filament components inside customer-facing Vue pages.
+- Prefer shadcn-vue for standard reusable UI primitives, and use custom Vue components for product- or domain-specific compositions.
+- Do not install another general-purpose Vue UI framework without approval.
+- Once shadcn-vue is installed, follow the repository's existing shadcn aliases and component conventions.
+
 ## Documentation Files
 
 - You must only create documentation files if explicitly requested by the user.

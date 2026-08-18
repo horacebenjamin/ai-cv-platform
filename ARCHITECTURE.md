@@ -6,8 +6,10 @@ AI CV Platform is a Laravel monolith with two presentation surfaces, shared Eloq
 
 ```text
 Browser
-  |-- Inertia + Vue customer application
-  `-- Filament + Livewire administration panel
+  |-- Customer application: Inertia + Vue 3
+  |     `-- shadcn-vue (intended component system)
+  |           `-- Tailwind CSS
+  `-- Administration: Filament + Livewire
              |
         Laravel routes / resources
              |
@@ -39,6 +41,20 @@ The application container depends on MySQL. MySQL has a health check, but `depen
 
 ## Presentation Layer
 
+The intended presentation architecture separates the two UI surfaces:
+
+```text
+Presentation
+|-- Customer application
+|   `-- Inertia + Vue 3
+|       `-- shadcn-vue
+|           `-- Tailwind CSS
+`-- Administration
+    `-- Filament + Livewire
+```
+
+shadcn-vue is the intended component layer in this architecture but is not currently installed. Its dependency and configuration setup is a separate implementation task.
+
 ### Customer application
 
 Laravel routes render Inertia pages from `resources/js/Pages`. Vue components and layouts live under `resources/js`, Vite builds the client bundle, and Ziggy exposes named Laravel routes to Vue.
@@ -54,6 +70,14 @@ Filament is mounted at `/admin`. Resources under `app/Filament/Resources` manage
 - `Support/AiAdmin.php`
 
 Dashboard widgets expose AI usage and job-management summaries. Filament authentication protects the panel.
+
+### UI Component Boundaries
+
+- shadcn-vue is the primary reusable component system for customer-facing Inertia/Vue pages once installed.
+- Filament is reserved for administrative interfaces. Keep the two UI systems separate, and do not reuse Filament components inside Inertia/Vue pages.
+- Product-specific Vue components may compose shadcn-vue primitives into domain workflows and experiences.
+- Do not duplicate low-level primitives when a suitable shadcn-vue component exists.
+- Do not introduce a second general-purpose Vue component library without approval.
 
 ## Domain Model
 

@@ -25,6 +25,14 @@ The authenticated customer UI is an Inertia/Vue application. Operational and con
 
 Check installed versions before using package APIs. Do not infer an API version from this document.
 
+## Frontend Component Strategy
+
+The intended customer-facing UI architecture is Inertia + Vue 3 + shadcn-vue + Tailwind CSS. shadcn-vue is not currently installed; it is the intended default component system for future customer-facing UI work, while Filament remains the component system for the `/admin` panel.
+
+- Do not use Filament components in customer-facing Inertia/Vue pages, and do not introduce another general-purpose Vue UI library without approval.
+- Once shadcn-vue is installed, prefer its existing primitives over equivalent low-level custom components. This normally includes Button, Input, Textarea, Label, Card, Badge, Dialog, Dropdown menu, Select, Tabs, Sheet, Table, Separator, Alert, and form primitives.
+- Keep product- and domain-specific UI as custom Vue components composed from those primitives. Examples include `CvEditor`, `CvSectionEditor`, `CvPreview`, `AiGenerationPanel`, `JobMatchScore`, and `ApplicationTracker`.
+
 ## Working Rules
 
 1. Run PHP, Artisan, Composer, and Node commands through `vendor/bin/sail`.
