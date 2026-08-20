@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\AiRequest;
 use App\Models\CV;
 use App\Models\JobApplication;
-use App\Models\Profile;
 use App\Models\User;
 use Illuminate\Support\Str;
 
@@ -32,20 +31,12 @@ final class DashboardService
         'interested',
     ];
 
-    private const PROFILE_FIELDS = [
-        'first_name' => 'First name',
-        'last_name' => 'Last name',
-        'headline' => 'Professional headline',
-        'phone' => 'Phone number',
-        'location' => 'Location',
-        'linkedin_url' => 'LinkedIn profile',
-        'bio' => 'Professional summary',
-    ];
+    public function __construct(private readonly ProfileCompletenessService $profileCompleteness) {}
 
     /**
      * @return array{
      *     overview: array{totalCvs: int, activeApplications: int, savedJobs: int, coverLetters: int, interviewProcesses: int},
-     *     profile: array{exists: bool, percentage: int, completedFields: int, totalFields: int, missingFields: list<string>},
+     *     profile: array{exists: bool, percentage: int, completedFields: int, totalFields: int, completedAreas: list<array{key: string, label: string}>, missingAreas: list<array{key: string, label: string}>, missingFields: list<string>, sectionCompleteness: array{attentionCount: int, summary: string, areas: list<array{key: string, label: string, status: 'complete'|'incomplete'}>}},
      *     credits: array{available: int|null, plan: string|null, renewalDate: string|null, used: int},
      *     recentCvs: list<array{id: int, title: string, status: string, targetJobTitle: string|null, historyCount: int, updatedAt: string|null}>,
      *     recentApplications: list<array{id: int, company: string, role: string|null, status: string, appliedAt: string|null, updatedAt: string|null}>,
@@ -55,9 +46,8 @@ final class DashboardService
      */
     public function for(User $user): array
     {
-        $profile = $user->profile()
-            ->first(['id', 'user_id', ...array_keys(self::PROFILE_FIELDS)]);
-        $profileCompleteness = $this->profileCompleteness($profile);
+        $profile = $user->profile()->first();
+        $profileCompleteness = $this->profileCompleteness->for($profile);
         $totalCvs = $user->cvs()->count();
         $activeApplications = $user->jobApplications()
             ->whereIn('status', self::ACTIVE_APPLICATION_STATUSES)
@@ -91,27 +81,6 @@ final class DashboardService
                 coverLetters: $coverLetters,
                 interviewProcesses: $interviewProcesses,
             ),
-        ];
-    }
-
-    /**
-     * @return array{exists: bool, percentage: int, completedFields: int, totalFields: int, missingFields: list<string>}
-     */
-    private function profileCompleteness(?Profile $profile): array
-    {
-        $missingFields = collect(self::PROFILE_FIELDS)
-            ->reject(fn (string $label, string $field): bool => filled($profile?->{$field}))
-            ->values()
-            ->all();
-        $totalFields = count(self::PROFILE_FIELDS);
-        $completedFields = $totalFields - count($missingFields);
-
-        return [
-            'exists' => $profile !== null,
-            'percentage' => (int) round(($completedFields / $totalFields) * 100),
-            'completedFields' => $completedFields,
-            'totalFields' => $totalFields,
-            'missingFields' => $missingFields,
         ];
     }
 
@@ -211,7 +180,7 @@ final class DashboardService
     }
 
     /**
-     * @param  array{exists: bool, percentage: int, completedFields: int, totalFields: int, missingFields: list<string>}  $profileCompleteness
+     * @param  array{exists: bool, percentage: int, completedFields: int, totalFields: int, completedAreas: list<array{key: string, label: string}>, missingAreas: list<array{key: string, label: string}>, missingFields: list<string>, sectionCompleteness: array{attentionCount: int, summary: string, areas: list<array{key: string, label: string, status: 'complete'|'incomplete'}>}}  $profileCompleteness
      * @return array{key: string, title: string, description: string}
      */
     private function nextFocus(

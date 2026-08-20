@@ -6,13 +6,7 @@ export interface DashboardOverview {
     interviewProcesses: number;
 }
 
-export interface ProfileCompleteness {
-    exists: boolean;
-    percentage: number;
-    completedFields: number;
-    totalFields: number;
-    missingFields: string[];
-}
+import type { ProfileCompleteness } from './career-profile';
 
 export interface DashboardCredits {
     available: number | null;

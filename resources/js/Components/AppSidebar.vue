@@ -8,6 +8,7 @@ import {
     Bot,
     BriefcaseBusiness,
     ChevronUp,
+    CircleUserRound,
     FileText,
     Files,
     LayoutDashboard,
@@ -33,6 +34,12 @@ const emit = defineEmits<{
 
 const navigationItems: NavigationItem[] = [
     { label: 'Dashboard', routeName: 'dashboard', icon: LayoutDashboard },
+    {
+        label: 'Career Profile',
+        routeName: 'career-profile.edit',
+        activePattern: 'career-profile.*',
+        icon: CircleUserRound,
+    },
     { label: 'My CVs', routeName: null, icon: Files },
     { label: 'Job Tracker', routeName: null, icon: BriefcaseBusiness },
     { label: 'Cover Letters', routeName: null, icon: FileText },

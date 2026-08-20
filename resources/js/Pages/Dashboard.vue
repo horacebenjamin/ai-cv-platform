@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Badge } from '@/Components/ui/badge';
+import { Button } from '@/Components/ui/button';
 import {
     Card,
     CardContent,
@@ -10,7 +11,7 @@ import {
 import { Separator } from '@/Components/ui/separator';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import type { DashboardProps } from '@/types';
-import { Head, usePage } from '@inertiajs/vue3';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 import {
     Bot,
     Bookmark,
@@ -317,6 +318,11 @@ const aiStatusClass = (status: string): string => {
                             <p v-else class="mt-4 text-xs leading-5 text-muted-foreground">
                                 All core profile details are recorded.
                             </p>
+                            <Button variant="outline" class="mt-4 w-full" as-child>
+                                <Link :href="route('career-profile.edit')">
+                                    {{ profile.percentage === 100 ? 'Review career profile' : 'Complete career profile' }}
+                                </Link>
+                            </Button>
                         </CardContent>
                     </Card>
 

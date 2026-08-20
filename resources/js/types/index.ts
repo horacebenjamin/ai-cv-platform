@@ -14,11 +14,19 @@ export interface PageProps {
 }
 
 export type {
+    CareerProfileData,
+    CareerProfileProps,
+    ProfileArea,
+    ProfileCompleteness,
+    ProfileSectionArea,
+    ProfileSectionCompleteness,
+} from './career-profile';
+
+export type {
     DashboardCredits,
     DashboardOverview,
     DashboardProps,
     NextFocus,
-    ProfileCompleteness,
     RecentAiRequest,
     RecentApplication,
     RecentCv,

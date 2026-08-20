@@ -7,6 +7,7 @@ test('guests cannot access authenticated customer pages', function (string $uri)
     $this->get($uri)->assertRedirect(route('login'));
 })->with([
     'dashboard' => '/dashboard',
+    'career profile' => '/career-profile',
     'settings' => '/profile',
 ]);
 
@@ -26,5 +27,6 @@ test('authenticated customer pages receive the user required by the app shell', 
             ->where('auth.user.email', $user->email));
 })->with([
     'dashboard' => ['/dashboard', 'Dashboard'],
+    'career profile' => ['/career-profile', 'CareerProfile/Edit'],
     'settings' => ['/profile', 'Profile/Edit'],
 ]);
