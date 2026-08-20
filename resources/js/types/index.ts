@@ -12,3 +12,14 @@ export interface Auth {
 export interface PageProps {
     auth: Auth;
 }
+
+export type {
+    DashboardCredits,
+    DashboardOverview,
+    DashboardProps,
+    NextFocus,
+    ProfileCompleteness,
+    RecentAiRequest,
+    RecentApplication,
+    RecentCv,
+} from './dashboard';
