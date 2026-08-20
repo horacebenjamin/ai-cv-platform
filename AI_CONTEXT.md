@@ -83,7 +83,7 @@ The authenticated customer UI is an Inertia/Vue application. Operational and con
 
 - PHP 8.4 and Laravel 12
 - MySQL 8.4 in the Sail environment
-- Inertia 2, Vue 3, Vite 7, and Tailwind CSS
+- Inertia 2, Vue 3, TypeScript, Vite 7, and Tailwind CSS
 - Filament 5 with Livewire 4
 - Pest 3
 - Laravel Sail for all local commands
@@ -93,7 +93,7 @@ Check installed versions before using package APIs. Do not infer an API version 
 
 ## Frontend Component Strategy
 
-The customer-facing UI architecture is Inertia + Vue 3 + shadcn-vue + Tailwind CSS. shadcn-vue is installed and configured as the default component system for customer-facing UI work, while Filament remains the component system for the `/admin` panel.
+The customer-facing UI architecture is Inertia + Vue 3 + TypeScript + shadcn-vue + Tailwind CSS. TypeScript is the default for new customer-facing Vue code, and shadcn-vue is configured to generate TypeScript components. Filament remains the component system for the `/admin` panel.
 
 - Do not use Filament components in customer-facing Inertia/Vue pages, and do not introduce another general-purpose Vue UI library without approval.
 - Prefer existing shadcn-vue primitives over equivalent low-level custom components. The initial foundation includes Button, Input, Textarea, Label, Card, Badge, and Separator; add other primitives incrementally when features require them.
@@ -172,6 +172,7 @@ vendor/bin/sail artisan test --compact
 vendor/bin/sail artisan test --compact tests/Feature/AIEngineTest.php
 vendor/bin/sail artisan test --compact tests/Feature/CVGenerationTest.php
 vendor/bin/sail bin pint --dirty --format agent
+vendor/bin/sail npm run type-check
 vendor/bin/sail npm run build
 docker compose config --quiet
 ```

@@ -1,23 +1,25 @@
-<script setup>
+<script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
-const props = defineProps({
-    show: {
-        type: Boolean,
-        default: false,
-    },
-    maxWidth: {
-        type: String,
-        default: '2xl',
-    },
-    closeable: {
-        type: Boolean,
-        default: true,
-    },
-});
+type MaxWidth = 'sm' | 'md' | 'lg' | 'xl' | '2xl';
 
-const emit = defineEmits(['close']);
-const dialog = ref();
+const props = withDefaults(
+    defineProps<{
+        show?: boolean;
+        maxWidth?: MaxWidth;
+        closeable?: boolean;
+    }>(),
+    {
+        show: false,
+        maxWidth: '2xl',
+        closeable: true,
+    },
+);
+
+const emit = defineEmits<{
+    close: [];
+}>();
+const dialog = ref<HTMLDialogElement | null>(null);
 const showSlot = ref(props.show);
 
 watch(
@@ -45,9 +47,9 @@ const close = () => {
     }
 };
 
-const closeOnEscape = (e) => {
-    if (e.key === 'Escape') {
-        e.preventDefault();
+const closeOnEscape = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape') {
+        event.preventDefault();
 
         if (props.show) {
             close();

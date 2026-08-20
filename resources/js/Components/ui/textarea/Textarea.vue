@@ -1,18 +1,19 @@
-<script setup>
+<script setup lang="ts">
 import { useVModel } from '@vueuse/core';
 import { cn } from '@/lib/utils';
+import type { HTMLAttributes } from 'vue';
 
-const props = defineProps({
-  class: {
-    type: [Boolean, null, String, Object, Array],
-    required: false,
-    skipCheck: true,
-  },
-  defaultValue: { type: [String, Number], required: false },
-  modelValue: { type: [String, Number], required: false },
-});
+type TextareaValue = string | number;
 
-const emits = defineEmits(['update:modelValue']);
+const props = defineProps<{
+  class?: HTMLAttributes['class'];
+  defaultValue?: TextareaValue;
+  modelValue?: TextareaValue;
+}>();
+
+const emits = defineEmits<{
+  'update:modelValue': [value: TextareaValue];
+}>();
 
 const modelValue = useVModel(props, 'modelValue', emits, {
   passive: true,

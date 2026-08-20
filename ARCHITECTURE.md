@@ -6,7 +6,7 @@ AI CV Platform is an AI-powered job application workspace implemented as a Larav
 
 ```text
 Browser
-  |-- Customer application: Inertia + Vue 3
+  |-- Customer application: Inertia + Vue 3 + TypeScript
   |     `-- shadcn-vue
   |           `-- Tailwind CSS
   `-- Administration: Filament + Livewire
@@ -94,7 +94,8 @@ The intended presentation architecture separates the two UI surfaces:
 Presentation
 |-- Customer application
 |   `-- Inertia + Vue 3
-|       `-- shadcn-vue
+|       `-- TypeScript
+|           `-- shadcn-vue
 |           `-- Tailwind CSS
 `-- Administration
     `-- Filament + Livewire
@@ -104,7 +105,7 @@ shadcn-vue is installed and configured as the customer application's reusable co
 
 ### Customer application
 
-Laravel routes render Inertia pages from `resources/js/Pages`. Vue components and layouts live under `resources/js`, Vite builds the client bundle, and Ziggy exposes named Laravel routes to Vue.
+Laravel routes render Inertia pages from `resources/js/Pages`. Vue components and layouts live under `resources/js`, use TypeScript by default, and share application types from `resources/js/types`. Vite builds the client bundle, and Ziggy exposes named Laravel routes to Vue.
 
 The current route surface includes the welcome page, Breeze authentication, an authenticated and verified dashboard, profile editing, and Laravel's `/up` health endpoint.
 
