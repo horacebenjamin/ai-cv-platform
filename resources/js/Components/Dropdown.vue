@@ -2,15 +2,18 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 
 type Alignment = 'left' | 'right' | 'center';
+type Direction = 'down' | 'up';
 
 const props = withDefaults(
     defineProps<{
         align?: Alignment;
+        direction?: Direction;
         width?: string;
         contentClasses?: string;
     }>(),
     {
         align: 'right',
+        direction: 'down',
         width: '48',
         contentClasses: 'py-1 bg-white dark:bg-gray-700',
     },
@@ -41,13 +44,17 @@ const alignmentClasses = computed(() => {
     }
 });
 
+const directionClasses = computed(() =>
+    props.direction === 'up' ? 'bottom-full mb-2' : 'mt-2',
+);
+
 const open = ref(false);
 </script>
 
 <template>
     <div class="relative">
         <div @click="open = !open">
-            <slot name="trigger" />
+            <slot name="trigger" :open="open" />
         </div>
 
         <!-- Full Screen Dropdown Overlay -->
@@ -67,8 +74,8 @@ const open = ref(false);
         >
             <div
                 v-show="open"
-                class="absolute z-50 mt-2 rounded-md shadow-lg"
-                :class="[widthClass, alignmentClasses]"
+                class="absolute z-50 rounded-md shadow-lg"
+                :class="[widthClass, alignmentClasses, directionClasses]"
                 style="display: none"
                 @click="open = false"
             >
