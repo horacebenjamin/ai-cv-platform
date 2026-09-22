@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\CareerProfileController;
+use App\Http\Controllers\CvImportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Foundation\Application;
@@ -23,6 +24,18 @@ Route::get('/dashboard', DashboardController::class)
 Route::middleware('auth')->group(function () {
     Route::get('/career-profile', [CareerProfileController::class, 'edit'])->name('career-profile.edit');
     Route::patch('/career-profile', [CareerProfileController::class, 'update'])->name('career-profile.update');
+
+    Route::post('/career-profile/imports', [CvImportController::class, 'store'])
+        ->name('career-profile.imports.store');
+    Route::get('/career-profile/imports/{import}', [CvImportController::class, 'show'])
+        ->whereNumber('import')
+        ->name('career-profile.imports.show');
+    Route::post('/career-profile/imports/{import}/apply', [CvImportController::class, 'apply'])
+        ->whereNumber('import')
+        ->name('career-profile.imports.apply');
+    Route::delete('/career-profile/imports/{import}', [CvImportController::class, 'destroy'])
+        ->whereNumber('import')
+        ->name('career-profile.imports.destroy');
 
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');

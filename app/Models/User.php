@@ -58,6 +58,12 @@ class User extends Authenticatable
         return $this->hasOne(Profile::class);
     }
 
+    /** Get the existing-CV imports created by the user. */
+    public function profileImports(): HasMany
+    {
+        return $this->hasMany(ProfileImport::class);
+    }
+
     /** Get the CVs owned by the user. */
     public function cvs(): HasMany
     {

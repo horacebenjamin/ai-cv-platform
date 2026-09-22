@@ -7,6 +7,7 @@ use App\Models\AiRequest;
 use App\Services\AI\AIRequestService;
 use App\Services\AI\AIUsageService;
 use App\Services\CV\CVGenerationService;
+use App\Services\Profile\CvImportService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Client\RequestException;
@@ -24,9 +25,9 @@ class ProcessAIRequest implements ShouldQueue
 {
     use Queueable;
 
-    public int $tries = 3;
+    public int $tries = 1;
 
-    public int $timeout = 120;
+    public int $timeout = 900;
 
     public function __construct(public readonly int $aiRequestId) {}
 
@@ -41,6 +42,7 @@ class ProcessAIRequest implements ShouldQueue
         AIUsageService $usage,
         CareerContentAgent $careerContent,
         CVGenerationService $cvGeneration,
+        CvImportService $cvImport,
     ): void {
         $request = AiRequest::query()->findOrFail($this->aiRequestId);
 
@@ -53,6 +55,18 @@ class ProcessAIRequest implements ShouldQueue
                 $cvGeneration->process($request);
             } catch (ValidationException|UnexpectedValueException|InvalidArgumentException $exception) {
                 $requests->fail($request, $exception);
+                $this->fail($exception);
+            }
+
+            return;
+        }
+
+        if ($request->feature === 'cv_import') {
+            try {
+                $cvImport->process($request);
+            } catch (ValidationException|UnexpectedValueException|InvalidArgumentException $exception) {
+                $requests->fail($request, $exception);
+                $cvImport->markFailed($request);
                 $this->fail($exception);
             }
 
@@ -122,8 +136,16 @@ class ProcessAIRequest implements ShouldQueue
     public function failed(?Throwable $exception): void
     {
         $request = AiRequest::query()->find($this->aiRequestId);
-        if ($request && ! in_array($request->status, ['completed', 'failed'], true)) {
+        if ($request === null) {
+            return;
+        }
+
+        if (! in_array($request->status, ['completed', 'failed'], true)) {
             app(AIRequestService::class)->fail($request, $exception ?? new RuntimeException('AI request exhausted its retries.'));
+        }
+
+        if ($request->feature === 'cv_import' && $request->refresh()->status !== 'completed') {
+            app(CvImportService::class)->markFailed($request);
         }
     }
 
