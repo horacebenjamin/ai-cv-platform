@@ -24,7 +24,16 @@ export interface ProfileCompleteness {
     sectionCompleteness: ProfileSectionCompleteness;
 }
 
+export type CareerProfileTab =
+    | 'overview'
+    | 'experience'
+    | 'skills'
+    | 'projects'
+    | 'education'
+    | 'certifications';
+
 export interface CareerProfileData {
+    exists: boolean;
     firstName: string | null;
     lastName: string | null;
     headline: string | null;
@@ -37,9 +46,81 @@ export interface CareerProfileData {
     bio: string | null;
 }
 
+export interface ProfileExperienceItem {
+    id: number;
+    jobTitle: string;
+    company: string;
+    location: string | null;
+    employmentType: string | null;
+    startDate: string | null;
+    endDate: string | null;
+    currentlyEmployed: boolean;
+    summary: string | null;
+    achievements: string[];
+    technologies: string[];
+}
+
+export interface ProfileSkillItem {
+    id: number;
+    name: string;
+    category: string | null;
+    proficiency: string | null;
+}
+
+export interface ProfileProjectItem {
+    id: number;
+    name: string;
+    role: string | null;
+    description: string | null;
+    context: string | null;
+    responsibilities: string | null;
+    outcomes: string | null;
+    technologies: string[];
+    url: string | null;
+    repositoryUrl: string | null;
+    startDate: string | null;
+    endDate: string | null;
+}
+
+export interface ProfileEducationItem {
+    id: number;
+    institution: string;
+    qualification: string;
+    subject: string | null;
+    grade: string | null;
+    startDate: string | null;
+    endDate: string | null;
+    description: string | null;
+}
+
+export interface ProfileCertificationItem {
+    id: number;
+    name: string;
+    organisation: string | null;
+    issueDate: string | null;
+    expiryDate: string | null;
+    credentialId: string | null;
+    credentialUrl: string | null;
+}
+
+export interface CareerProfileSections {
+    experiences: ProfileExperienceItem[];
+    skills: ProfileSkillItem[];
+    projects: ProfileProjectItem[];
+    education: ProfileEducationItem[];
+    certifications: ProfileCertificationItem[];
+}
+
+export interface CareerProfileOptions {
+    skillCategories: string[];
+}
+
 export interface CareerProfileProps {
+    activeTab: CareerProfileTab;
     profile: CareerProfileData;
     completeness: ProfileCompleteness;
+    sections: CareerProfileSections;
+    options: CareerProfileOptions;
 }
 
 export interface ProposedProfileField {

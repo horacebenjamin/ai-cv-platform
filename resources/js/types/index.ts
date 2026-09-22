@@ -15,11 +15,19 @@ export interface PageProps {
 
 export type {
     CareerProfileData,
+    CareerProfileOptions,
     CareerProfileProps,
+    CareerProfileSections,
+    CareerProfileTab,
     ProfileArea,
+    ProfileCertificationItem,
     ProfileCompleteness,
+    ProfileEducationItem,
+    ProfileExperienceItem,
+    ProfileProjectItem,
     ProfileSectionArea,
     ProfileSectionCompleteness,
+    ProfileSkillItem,
 } from './career-profile';
 
 export type {

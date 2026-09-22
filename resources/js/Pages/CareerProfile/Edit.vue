@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import CertificationsSection from '@/Components/CareerProfile/CertificationsSection.vue';
+import EducationSection from '@/Components/CareerProfile/EducationSection.vue';
+import ExperienceSection from '@/Components/CareerProfile/ExperienceSection.vue';
+import ProjectsSection from '@/Components/CareerProfile/ProjectsSection.vue';
+import SkillsSection from '@/Components/CareerProfile/SkillsSection.vue';
 import InputError from '@/Components/InputError.vue';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -12,20 +17,27 @@ import {
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { Separator } from '@/Components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/Components/ui/tabs';
 import { Textarea } from '@/Components/ui/textarea';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import type { CareerProfileProps } from '@/types';
+import type { CareerProfileProps, CareerProfileTab } from '@/types';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import {
+    Award,
+    BriefcaseBusiness,
     CheckCircle2,
     Circle,
     CircleUserRound,
     Contact,
     ExternalLink,
     FileText,
+    FolderKanban,
+    GraduationCap,
     Lightbulb,
     MapPin,
+    Wrench,
 } from 'lucide-vue-next';
+import { computed, ref, watch } from 'vue';
 
 interface CareerProfileForm {
     first_name: string;
@@ -54,6 +66,47 @@ const form = useForm<CareerProfileForm>({
     portfolio_url: props.profile.portfolioUrl ?? '',
     bio: props.profile.bio ?? '',
 });
+
+const activeTab = ref<CareerProfileTab>(props.activeTab);
+
+watch(
+    () => props.activeTab,
+    (tab) => (activeTab.value = tab),
+);
+
+const tabs = computed(() => [
+    { value: 'overview' as CareerProfileTab, label: 'Overview', icon: CircleUserRound, count: null },
+    {
+        value: 'experience' as CareerProfileTab,
+        label: 'Experience',
+        icon: BriefcaseBusiness,
+        count: props.sections.experiences.length,
+    },
+    {
+        value: 'skills' as CareerProfileTab,
+        label: 'Skills',
+        icon: Wrench,
+        count: props.sections.skills.length,
+    },
+    {
+        value: 'projects' as CareerProfileTab,
+        label: 'Projects',
+        icon: FolderKanban,
+        count: props.sections.projects.length,
+    },
+    {
+        value: 'education' as CareerProfileTab,
+        label: 'Education',
+        icon: GraduationCap,
+        count: props.sections.education.length,
+    },
+    {
+        value: 'certifications' as CareerProfileTab,
+        label: 'Certifications',
+        icon: Award,
+        count: props.sections.certifications.length,
+    },
+]);
 
 const submit = (): void => {
     form.patch(route('career-profile.update'), {
@@ -205,7 +258,19 @@ const submit = (): void => {
                 </Card>
             </div>
 
-            <form class="flex flex-col gap-6" @submit.prevent="submit">
+            <Tabs v-model="activeTab">
+                <TabsList>
+                    <TabsTrigger v-for="tab in tabs" :key="tab.value" :value="tab.value">
+                        <component :is="tab.icon" class="size-4" aria-hidden="true" />
+                        {{ tab.label }}
+                        <Badge v-if="tab.count !== null" variant="secondary" class="ms-1">
+                            {{ tab.count }}
+                        </Badge>
+                    </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="overview">
+                    <form class="flex flex-col gap-6" @submit.prevent="submit">
                 <Card class="shadow-sm">
                     <CardHeader class="gap-2 sm:p-7">
                         <div class="flex items-start gap-3">
@@ -379,7 +444,29 @@ const submit = (): void => {
                     <span>Account email and security remain in Settings.</span>
                     <Separator class="flex-1" />
                 </div>
-            </form>
+                    </form>
+                </TabsContent>
+
+                <TabsContent value="experience">
+                    <ExperienceSection :items="sections.experiences" />
+                </TabsContent>
+
+                <TabsContent value="skills">
+                    <SkillsSection :items="sections.skills" :categories="options.skillCategories" />
+                </TabsContent>
+
+                <TabsContent value="projects">
+                    <ProjectsSection :items="sections.projects" />
+                </TabsContent>
+
+                <TabsContent value="education">
+                    <EducationSection :items="sections.education" />
+                </TabsContent>
+
+                <TabsContent value="certifications">
+                    <CertificationsSection :items="sections.certifications" />
+                </TabsContent>
+            </Tabs>
         </div>
     </AuthenticatedLayout>
 </template>
