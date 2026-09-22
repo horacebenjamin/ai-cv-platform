@@ -37,6 +37,8 @@ export interface CareerProfileData {
     firstName: string | null;
     lastName: string | null;
     headline: string | null;
+    seniority: string | null;
+    preferredRoles: string[];
     phone: string | null;
     location: string | null;
     website: string | null;
@@ -111,7 +113,14 @@ export interface CareerProfileSections {
     certifications: ProfileCertificationItem[];
 }
 
+export interface SeniorityOption {
+    value: string;
+    label: string;
+}
+
 export interface CareerProfileOptions {
+    suggestedRoles: string[];
+    seniorities: SeniorityOption[];
     skillCategories: string[];
 }
 

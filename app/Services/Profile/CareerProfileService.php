@@ -45,9 +45,25 @@ final class CareerProfileService
             'completeness' => $this->completeness->for($profile),
             'sections' => $this->sections($profile),
             'options' => [
+                'suggestedRoles' => array_values((array) config('career.suggested_roles', [])),
+                'seniorities' => $this->seniorities(),
                 'skillCategories' => array_values((array) config('career.skill_categories', [])),
             ],
         ];
+    }
+
+    /**
+     * @return array{value: string, label: string}[]
+     */
+    public function seniorities(): array
+    {
+        $seniorities = [];
+
+        foreach ((array) config('career.seniorities', []) as $value => $label) {
+            $seniorities[] = ['value' => (string) $value, 'label' => (string) $label];
+        }
+
+        return $seniorities;
     }
 
     /**
@@ -60,6 +76,8 @@ final class CareerProfileService
             'firstName' => $profile?->first_name,
             'lastName' => $profile?->last_name,
             'headline' => $profile?->headline,
+            'seniority' => $profile?->seniority,
+            'preferredRoles' => $profile?->preferred_roles ?? [],
             'phone' => $profile?->phone,
             'location' => $profile?->location,
             'website' => $profile?->website,

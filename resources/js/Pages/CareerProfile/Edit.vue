@@ -4,6 +4,7 @@ import EducationSection from '@/Components/CareerProfile/EducationSection.vue';
 import ExperienceSection from '@/Components/CareerProfile/ExperienceSection.vue';
 import ProjectsSection from '@/Components/CareerProfile/ProjectsSection.vue';
 import SkillsSection from '@/Components/CareerProfile/SkillsSection.vue';
+import TagListInput from '@/Components/CareerProfile/TagListInput.vue';
 import InputError from '@/Components/InputError.vue';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -43,6 +44,8 @@ interface CareerProfileForm {
     first_name: string;
     last_name: string;
     headline: string;
+    seniority: string;
+    preferred_roles: string[];
     phone: string;
     location: string;
     website: string;
@@ -58,6 +61,8 @@ const form = useForm<CareerProfileForm>({
     first_name: props.profile.firstName ?? '',
     last_name: props.profile.lastName ?? '',
     headline: props.profile.headline ?? '',
+    seniority: props.profile.seniority ?? '',
+    preferred_roles: [...props.profile.preferredRoles],
     phone: props.profile.phone ?? '',
     location: props.profile.location ?? '',
     website: props.profile.website ?? '',
@@ -278,9 +283,9 @@ const submit = (): void => {
                                 <CircleUserRound class="size-5" aria-hidden="true" />
                             </span>
                             <div>
-                                <CardTitle class="text-lg">Professional identity</CardTitle>
+                                <CardTitle class="text-lg">Professional information</CardTitle>
                                 <CardDescription class="mt-1">
-                                    The name, headline, and location used to identify you professionally.
+                                    How you describe yourself professionally, and the roles you are targeting.
                                 </CardDescription>
                             </div>
                         </div>
@@ -319,6 +324,35 @@ const submit = (): void => {
                                 A concise, factual description of your current professional focus.
                             </p>
                             <InputError :message="form.errors.headline" />
+                        </div>
+                        <div class="flex flex-col gap-2 sm:col-span-2">
+                            <Label>Seniority</Label>
+                            <div class="flex flex-wrap gap-2">
+                                <Button
+                                    v-for="option in options.seniorities"
+                                    :key="option.value"
+                                    type="button"
+                                    size="sm"
+                                    :variant="form.seniority === option.value ? 'default' : 'outline'"
+                                    @click="form.seniority = form.seniority === option.value ? '' : option.value"
+                                >
+                                    {{ option.label }}
+                                </Button>
+                            </div>
+                            <p class="text-xs text-muted-foreground">
+                                Optional. Years of experience are calculated from your recorded roles rather than stored.
+                            </p>
+                            <InputError :message="form.errors.seniority" />
+                        </div>
+                        <div class="flex flex-col gap-2 sm:col-span-2">
+                            <Label for="preferred_roles">Preferred roles</Label>
+                            <TagListInput
+                                id="preferred_roles"
+                                v-model="form.preferred_roles"
+                                placeholder="Add a role and press Enter"
+                                :suggestions="options.suggestedRoles"
+                            />
+                            <InputError :message="form.errors.preferred_roles" />
                         </div>
                         <div id="location" class="flex scroll-mt-24 flex-col gap-2 sm:col-span-2">
                             <Label for="location_input">Location</Label>

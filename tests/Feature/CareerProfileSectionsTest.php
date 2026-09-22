@@ -19,6 +19,15 @@ function sectionProfile(User $user, array $attributes = []): Profile
     ]);
 }
 
+function targetingPayload(array $overrides = []): array
+{
+    return $overrides + [
+        'first_name' => 'Alex',
+        'last_name' => 'Taylor',
+        'headline' => 'Backend PHP Developer',
+    ];
+}
+
 test('guests cannot manage career profile sections', function (): void {
     $this->post(route('career-profile.experiences.store'))->assertRedirect(route('login'));
     $this->post(route('career-profile.skills.store'))->assertRedirect(route('login'));
@@ -285,4 +294,130 @@ test('an unknown career profile tab falls back to the overview', function (): vo
     $this->actingAs($user)
         ->get(route('career-profile.edit', ['tab' => 'not-a-tab']))
         ->assertInertia(fn (Assert $page) => $page->where('activeTab', 'overview')->etc());
+});
+
+test('configured seniority values are accepted', function (string $seniority): void {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->patch(route('career-profile.update'), targetingPayload(['seniority' => $seniority]))
+        ->assertSessionHasNoErrors();
+
+    expect($user->profile()->sole()->seniority)->toBe($seniority);
+})->with([
+    'junior' => 'junior',
+    'mid-level' => 'mid',
+    'senior' => 'senior',
+    'lead' => 'lead',
+    'principal' => 'principal',
+]);
+
+test('targeting persists without damaging existing professional fields', function (): void {
+    $user = User::factory()->create();
+    $profile = sectionProfile($user, [
+        'headline' => 'Laravel Developer',
+        'bio' => 'Builds reliable web applications.',
+        'location' => 'Leeds',
+    ]);
+
+    $this->actingAs($user)
+        ->patch(route('career-profile.update'), targetingPayload([
+            'headline' => $profile->headline,
+            'bio' => $profile->bio,
+            'location' => $profile->location,
+            'seniority' => 'lead',
+            'preferred_roles' => ['Laravel Developer', 'Backend PHP Developer'],
+        ]))
+        ->assertSessionHasNoErrors();
+
+    expect($profile->refresh()->seniority)->toBe('lead')
+        ->and($profile->preferred_roles)->toBe(['Laravel Developer', 'Backend PHP Developer'])
+        ->and($profile->headline)->toBe('Laravel Developer')
+        ->and($profile->bio)->toBe('Builds reliable web applications.')
+        ->and($profile->location)->toBe('Leeds');
+});
+
+test('saved targeting and configured options are returned to the career profile page', function (): void {
+    $user = User::factory()->create();
+    sectionProfile($user, [
+        'seniority' => 'senior',
+        'preferred_roles' => ['Platform Engineer', 'Cloud Engineer'],
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('career-profile.edit'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('profile.seniority', 'senior')
+            ->where('profile.preferredRoles', ['Platform Engineer', 'Cloud Engineer'])
+            ->where('options.seniorities', [
+                ['value' => 'junior', 'label' => 'Junior'],
+                ['value' => 'mid', 'label' => 'Mid-level'],
+                ['value' => 'senior', 'label' => 'Senior'],
+                ['value' => 'lead', 'label' => 'Lead'],
+                ['value' => 'principal', 'label' => 'Principal'],
+            ])
+            ->where('options.suggestedRoles.0', 'Software Engineer')
+            ->etc());
+});
+
+test('invalid seniority is rejected without replacing saved targeting', function (): void {
+    $user = User::factory()->create();
+    $profile = sectionProfile($user, [
+        'seniority' => 'senior',
+        'preferred_roles' => ['Platform Engineer'],
+    ]);
+
+    $this->actingAs($user)
+        ->from(route('career-profile.edit'))
+        ->patch(route('career-profile.update'), targetingPayload([
+            'seniority' => 'emperor',
+            'preferred_roles' => ['Cloud Engineer'],
+        ]))
+        ->assertInvalid(['seniority']);
+
+    expect($profile->refresh()->seniority)->toBe('senior')
+        ->and($profile->preferred_roles)->toBe(['Platform Engineer']);
+});
+
+test('malformed preferred role payloads are rejected', function (mixed $preferredRoles, string $error): void {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->patch(route('career-profile.update'), targetingPayload([
+            'preferred_roles' => $preferredRoles,
+        ]))
+        ->assertInvalid([$error]);
+
+    expect($user->profile()->exists())->toBeFalse();
+})->with([
+    'not an array' => ['Backend Developer', 'preferred_roles'],
+    'numeric role' => [[123], 'preferred_roles.0'],
+    'nested role' => [[['name' => 'Backend Developer']], 'preferred_roles.0'],
+    'blank role' => [[''], 'preferred_roles.0'],
+    'duplicate roles' => [['Laravel Developer', 'laravel developer'], 'preferred_roles.1'],
+    'more than ten roles' => [array_map(fn (int $index): string => "Role {$index}", range(1, 11)), 'preferred_roles'],
+]);
+
+test('targeting updates cannot affect another users profile', function (): void {
+    $owner = User::factory()->create();
+    $otherUser = User::factory()->create();
+    $ownerProfile = sectionProfile($owner, [
+        'seniority' => 'principal',
+        'preferred_roles' => ['Platform Engineer'],
+    ]);
+    $otherProfile = sectionProfile($otherUser);
+
+    $this->actingAs($otherUser)
+        ->patch(route('career-profile.update'), targetingPayload([
+            'profile_id' => $ownerProfile->id,
+            'seniority' => 'junior',
+            'preferred_roles' => ['Frontend Developer'],
+        ]))
+        ->assertSessionHasNoErrors();
+
+    expect($ownerProfile->refresh()->seniority)->toBe('principal')
+        ->and($ownerProfile->preferred_roles)->toBe(['Platform Engineer'])
+        ->and($otherProfile->refresh()->seniority)->toBe('junior')
+        ->and($otherProfile->preferred_roles)->toBe(['Frontend Developer']);
 });

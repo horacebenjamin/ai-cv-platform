@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateCareerProfileRequest extends FormRequest
 {
@@ -23,6 +24,9 @@ class UpdateCareerProfileRequest extends FormRequest
             'first_name' => ['required', 'string', 'max:255'],
             'last_name' => ['required', 'string', 'max:255'],
             'headline' => ['nullable', 'string', 'max:255'],
+            'seniority' => ['nullable', 'string', Rule::in(array_keys((array) config('career.seniorities', [])))],
+            'preferred_roles' => ['nullable', 'array', 'max:10'],
+            'preferred_roles.*' => ['bail', 'required', 'string', 'distinct:ignore_case', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'location' => ['nullable', 'string', 'max:255'],
             'website' => ['nullable', 'url:http,https', 'max:2048'],

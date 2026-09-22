@@ -28,6 +28,7 @@ export type {
     ProfileSectionArea,
     ProfileSectionCompleteness,
     ProfileSkillItem,
+    SeniorityOption,
 } from './career-profile';
 
 export type {
