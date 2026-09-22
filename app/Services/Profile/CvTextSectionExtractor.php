@@ -83,16 +83,19 @@ final class CvTextSectionExtractor
      * Remove selected explicit top-level sections while preserving all other text.
      *
      * @param  list<string>  $headings
+     * @param  list<string>  $additionalBoundaries
      */
-    public function without(string $sourceText, array $headings): string
+    public function without(string $sourceText, array $headings, array $additionalBoundaries = []): string
     {
         $excludedHeadings = array_map($this->normalizeHeading(...), $headings);
+        $boundaryHeadings = array_map($this->normalizeHeading(...), $additionalBoundaries);
         $lines = preg_split('/\R/u', $sourceText) ?: [];
         $result = [];
         $excluding = false;
 
         foreach ($lines as $line) {
-            $heading = $this->recognizedHeading($line);
+            $heading = $this->recognizedHeading($line)
+                ?? $this->matchingHeading($line, $boundaryHeadings);
 
             if ($heading !== null) {
                 $excluding = in_array($heading, $excludedHeadings, true);
@@ -125,11 +128,56 @@ final class CvTextSectionExtractor
         return false;
     }
 
+    /**
+     * Extract a section headed by an exact source heading, stopping at any
+     * deterministic or supplied candidate heading.
+     *
+     * @param  list<string>  $additionalBoundaries
+     */
+    public function extractFromHeading(string $sourceText, string $targetHeading, array $additionalBoundaries = []): ?string
+    {
+        $targetHeading = $this->normalizeHeading($targetHeading);
+        $boundaryHeadings = array_map($this->normalizeHeading(...), $additionalBoundaries);
+        $lines = preg_split('/\R/u', $sourceText) ?: [];
+        $sectionLines = [];
+        $inSection = false;
+
+        foreach ($lines as $line) {
+            $normalizedLine = $this->normalizeHeading($line);
+            $heading = $this->recognizedHeading($line)
+                ?? $this->matchingHeading($line, $boundaryHeadings);
+
+            if (! $inSection && $normalizedLine === $targetHeading) {
+                $inSection = true;
+
+                continue;
+            }
+
+            if ($inSection && $heading !== null) {
+                break;
+            }
+
+            if ($inSection) {
+                $sectionLines[] = $line;
+            }
+        }
+
+        return $inSection ? trim(implode("\n", $sectionLines)) : null;
+    }
+
     private function recognizedHeading(string $line): ?string
     {
         $heading = $this->normalizeHeading($line);
 
         return in_array($heading, self::TOP_LEVEL_HEADINGS, true) ? $heading : null;
+    }
+
+    /** @param list<string> $headings */
+    private function matchingHeading(string $line, array $headings): ?string
+    {
+        $heading = $this->normalizeHeading($line);
+
+        return in_array($heading, $headings, true) ? $heading : null;
     }
 
     private function normalizeHeading(string $line): string

@@ -45,7 +45,6 @@ test('it detects common experience headings and stops at another explicit sectio
         ->not->toContain('Awards', 'Employee of the Year');
 })->with('experience section headings');
 
-
 test('it removes selected sections while preserving unrelated CV sections', function (): void {
     $sourceText = <<<'TEXT'
         Alex Taylor
@@ -85,4 +84,29 @@ test('it removes selected sections while preserving unrelated CV sections', func
     expect($filtered)
         ->toContain('Professional Summary', 'Backend developer.', 'Education', 'BSc Computer Science')
         ->not->toContain('Acme Ltd', 'Built customer systems.', 'Technical Skills', 'PHP, Laravel');
+});
+
+test('it extracts an unusual heading from original text until the next candidate boundary', function (): void {
+    $sourceText = <<<'TEXT'
+        Alex Taylor
+
+        Career Journey
+
+        Senior Developer | Acme Ltd | January 2024 - Present
+        - Built internal systems.
+
+        Technology Stack
+
+        Backend: PHP, Laravel
+        TEXT;
+
+    $section = app(CvTextSectionExtractor::class)->extractFromHeading(
+        $sourceText,
+        'Career Journey',
+        ['Career Journey', 'Technology Stack'],
+    );
+
+    expect($section)
+        ->toBe("Senior Developer | Acme Ltd | January 2024 - Present\n- Built internal systems.")
+        ->not->toContain('Technology Stack', 'PHP');
 });

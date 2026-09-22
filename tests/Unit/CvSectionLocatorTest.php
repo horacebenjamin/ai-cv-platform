@@ -38,5 +38,9 @@ test('it locates common cv sections', function (): void {
         ->and($locator->projects($sourceText))
         ->toContain('Customer Portal')
         ->and($locator->certifications($sourceText))
-        ->toContain('AWS Certified Developer');
+        ->toContain('AWS Certified Developer')
+        ->and($locator->semanticType('Professional Experience'))->toBe('experience')
+        ->and($locator->semanticType('Technical Skills'))->toBe('skills')
+        ->and($locator->semanticType('Interests'))->toBeNull()
+        ->and($locator->semanticType('Full Stack Developer'))->toBeNull();
 });

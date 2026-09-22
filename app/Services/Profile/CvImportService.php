@@ -2,6 +2,7 @@
 
 namespace App\Services\Profile;
 
+use App\Ai\Agents\ClassifyCvSectionsAgent;
 use App\Ai\Agents\ImportCvAgent;
 use App\Ai\Agents\ImportExperienceAgent;
 use App\Models\AiRequest;
@@ -59,6 +60,14 @@ final class CvImportService
         'tools',
     ];
 
+    private const SEMANTIC_SECTION_TYPES = [
+        'experience',
+        'skills',
+        'projects',
+        'education',
+        'certifications',
+    ];
+
     /** Profile columns an import may propose, mapped from extracted keys. */
     private const PROFILE_FIELDS = [
         'first_name' => 'first_name',
@@ -75,6 +84,8 @@ final class CvImportService
     public function __construct(
         private readonly ImportCvAgent $agent,
         private readonly ImportExperienceAgent $experienceAgent,
+        private readonly ClassifyCvSectionsAgent $sectionClassifier,
+        private readonly CvHeadingCandidateExtractor $headingCandidates,
         private readonly ExperienceBlockSplitter $experienceBlocks,
         private readonly TechnicalSkillsParser $skillsParser,
         private readonly CvTextSectionExtractor $sections,
@@ -124,17 +135,27 @@ final class CvImportService
 
         $requestedProvider = (string) config('ai.default', 'openai');
         $providerTimeout = (int) config("ai.providers.{$requestedProvider}.timeout", 60);
-        $experienceText = $this->sectionLocator->experience(
-            $import->source_text,
+        $startedAt = hrtime(true);
+        $sectionResolution = $this->resolveSections(
+            $import,
+            $requestedProvider,
+            $request->model,
+            $providerTimeout,
         );
+        $resolvedSections = $sectionResolution['sections'];
+        $experienceText = $resolvedSections['experience'];
         $experienceBlocks = $experienceText === null
             ? []
             : $this->experienceBlocks->split($experienceText);
         $semanticSourceText = $this->sections->without(
             $import->source_text,
-            [...self::EXPERIENCE_SECTION_HEADINGS, ...self::SKILLS_SECTION_HEADINGS],
+            [
+                ...self::EXPERIENCE_SECTION_HEADINGS,
+                ...self::SKILLS_SECTION_HEADINGS,
+                ...$sectionResolution['excluded_headings'],
+            ],
+            $sectionResolution['boundaries'],
         );
-        $startedAt = hrtime(true);
         $response = $this->agent->prompt(
             $semanticSourceText,
             provider: $requestedProvider,
@@ -159,17 +180,23 @@ final class CvImportService
         $responseData = $response->toArray();
         $responseData['experiences'] = $experienceExtraction['experiences'];
         $responseData['experience_skipped'] = $experienceExtraction['skipped'];
-        $responseData['skills'] = $this->skillsParser->parse($import->source_text, allowUnsectioned: false);
+        $responseData['skills'] = $resolvedSections['skills'] === null
+            ? []
+            : $this->skillsParser->parseSection($resolvedSections['skills']);
 
         $extracted = $this->normalize(
             $responseData,
-            $import->source_text,
+            $resolvedSections,
         );
 
         $calculated = $this->usage->calculate(
             $provider,
-            $response->usage->promptTokens + $experienceExtraction['prompt_tokens'],
-            $response->usage->completionTokens + $experienceExtraction['completion_tokens'],
+            $response->usage->promptTokens
+                + $experienceExtraction['prompt_tokens']
+                + $sectionResolution['prompt_tokens'],
+            $response->usage->completionTokens
+                + $experienceExtraction['completion_tokens']
+                + $sectionResolution['completion_tokens'],
             $model,
         );
 
@@ -192,6 +219,143 @@ final class CvImportService
 
             return $import->refresh();
         });
+    }
+
+    /**
+     * @return array{
+     *     sections: array{experience: ?string, skills: ?string, projects: ?string, education: ?string, certifications: ?string},
+     *     boundaries: list<string>,
+     *     excluded_headings: list<string>,
+     *     prompt_tokens: int,
+     *     completion_tokens: int
+     * }
+     */
+    private function resolveSections(
+        ProfileImport $import,
+        string $provider,
+        ?string $model,
+        int $timeout,
+    ): array {
+        $sourceText = $import->source_text;
+        $resolved = [
+            'experience' => $this->sectionLocator->experience($sourceText),
+            'skills' => $this->sectionLocator->skills($sourceText),
+            'projects' => $this->sectionLocator->projects($sourceText),
+            'education' => $this->sectionLocator->education($sourceText),
+            'certifications' => $this->sectionLocator->certifications($sourceText),
+        ];
+        $missingTypes = array_keys(array_filter($resolved, static fn (?string $section): bool => $section === null));
+
+        if ($missingTypes === []) {
+            return $this->sectionResolution($resolved);
+        }
+
+        $candidates = array_values(array_filter(
+            $this->headingCandidates->extract($sourceText),
+            fn (array $candidate): bool => $this->sectionLocator->semanticType($candidate['heading']) === null,
+        ));
+
+        if ($candidates === []) {
+            return $this->sectionResolution($resolved);
+        }
+
+        try {
+            $response = $this->sectionClassifier->prompt(
+                json_encode(['candidates' => $candidates], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+                provider: $provider,
+                model: $model,
+                timeout: $timeout,
+            );
+
+            if (! $response instanceof StructuredAgentResponse) {
+                throw new RuntimeException('The CV section classifier returned an unexpected response type.');
+            }
+
+            $boundaries = array_column($candidates, 'heading');
+            $candidateHeadings = array_fill_keys($boundaries, true);
+            $fallbackSections = array_fill_keys(self::SEMANTIC_SECTION_TYPES, []);
+            $fallbackHeadings = array_fill_keys(self::SEMANTIC_SECTION_TYPES, []);
+
+            $classifications = $response->toArray()['sections'] ?? [];
+
+            if (! is_array($classifications)) {
+                $classifications = [];
+            }
+
+            foreach ($classifications as $classification) {
+                if (! is_array($classification)) {
+                    continue;
+                }
+
+                $heading = $classification['heading'] ?? null;
+                $type = $classification['type'] ?? null;
+
+                if (! is_string($heading)
+                    || ! isset($candidateHeadings[$heading])
+                    || ! is_string($type)
+                    || ! in_array($type, $missingTypes, true)) {
+                    continue;
+                }
+
+                $section = $this->sections->extractFromHeading($sourceText, $heading, $boundaries);
+
+                if ($section === null || $section === '') {
+                    continue;
+                }
+
+                $fallbackSections[$type][] = $section;
+                $fallbackHeadings[$type][] = $heading;
+            }
+
+            foreach (self::SEMANTIC_SECTION_TYPES as $type) {
+                if ($resolved[$type] === null && $fallbackSections[$type] !== []) {
+                    $resolved[$type] = implode("\n\n", $fallbackSections[$type]);
+                }
+            }
+
+            return $this->sectionResolution(
+                $resolved,
+                $boundaries,
+                [...$fallbackHeadings['experience'], ...$fallbackHeadings['skills']],
+                $response->usage->promptTokens,
+                $response->usage->completionTokens,
+            );
+        } catch (Throwable $exception) {
+            Log::warning('CV section heading classification failed.', [
+                'profile_import_id' => $import->getKey(),
+                'exception' => $exception::class,
+            ]);
+
+            return $this->sectionResolution($resolved);
+        }
+    }
+
+    /**
+     * @param  array{experience: ?string, skills: ?string, projects: ?string, education: ?string, certifications: ?string}  $sections
+     * @param  list<string>  $boundaries
+     * @param  list<string>  $excludedHeadings
+     * @return array{
+     *     sections: array{experience: ?string, skills: ?string, projects: ?string, education: ?string, certifications: ?string},
+     *     boundaries: list<string>,
+     *     excluded_headings: list<string>,
+     *     prompt_tokens: int,
+     *     completion_tokens: int
+     * }
+     */
+    private function sectionResolution(
+        array $sections,
+        array $boundaries = [],
+        array $excludedHeadings = [],
+        int $promptTokens = 0,
+        int $completionTokens = 0,
+    ): array {
+        return [
+            'sections' => $sections,
+            'boundaries' => $boundaries,
+            'excluded_headings' => $excludedHeadings,
+            'prompt_tokens' => $promptTokens,
+            'completion_tokens' => $completionTokens,
+        ];
     }
 
     /**
@@ -550,9 +714,10 @@ final class CvImportService
      * Reduce the model response to storable proposals, dropping unusable rows.
      *
      * @param  array<string, mixed>  $data
+     * @param  array{experience: ?string, skills: ?string, projects: ?string, education: ?string, certifications: ?string}  $resolvedSections
      * @return array<string, mixed>
      */
-    private function normalize(array $data, string $sourceText): array
+    private function normalize(array $data, array $resolvedSections): array
     {
         $skipped = max(0, (int) ($data['experience_skipped'] ?? 0));
         $professional = [];
@@ -608,10 +773,10 @@ final class CvImportService
         ]);
 
         $experiences = $this->groundExperiences($experiences, $skipped);
-        $skills = $this->groundSkills($skills, $sourceText, $skipped);
-        $projects = $this->groundProjects($projects, $sourceText, $skipped);
-        $education = $this->groundEducation($education, $sourceText, $skipped);
-        $certifications = $this->groundCertifications($certifications, $sourceText, $skipped);
+        $skills = $this->groundSkills($skills, $resolvedSections['skills'], $skipped);
+        $projects = $this->groundProjects($projects, $resolvedSections['projects'], $skipped);
+        $education = $this->groundEducation($education, $resolvedSections['education'], $skipped);
+        $certifications = $this->groundCertifications($certifications, $resolvedSections['certifications'], $skipped);
 
         // A stored experience must have a start date, so unreadable dates are
         // reported as skipped rather than guessed.
@@ -649,6 +814,7 @@ final class CvImportService
 
             if ($this->isCareerBreak($jobTitle)) {
                 $skipped++;
+
                 continue;
             }
 
@@ -712,10 +878,8 @@ final class CvImportService
      * @param  list<array<string, mixed>>  $skills
      * @return list<array<string, mixed>>
      */
-    private function groundSkills(array $skills, string $sourceText, int &$skipped): array
+    private function groundSkills(array $skills, ?string $section, int &$skipped): array
     {
-        $section = $this->sectionLocator->skills($sourceText);
-
         return $this->groundedItems($skills, $section, $skipped, function (array $skill, string $section): ?array {
             $name = mb_strtolower((string) $skill['name']);
 
@@ -734,10 +898,8 @@ final class CvImportService
      * @param  list<array<string, mixed>>  $projects
      * @return list<array<string, mixed>>
      */
-    private function groundProjects(array $projects, string $sourceText, int &$skipped): array
+    private function groundProjects(array $projects, ?string $section, int &$skipped): array
     {
-        $section = $this->sectionLocator->projects($sourceText);
-
         return $this->groundedItems($projects, $section, $skipped, function (array $project, string $section): ?array {
             if (! $this->sourceContains($section, $project['name'])) {
                 return null;
@@ -754,10 +916,8 @@ final class CvImportService
      * @param  list<array<string, mixed>>  $education
      * @return list<array<string, mixed>>
      */
-    private function groundEducation(array $education, string $sourceText, int &$skipped): array
+    private function groundEducation(array $education, ?string $section, int &$skipped): array
     {
-        $section = $this->sectionLocator->education($sourceText);
-
         return $this->groundedItems($education, $section, $skipped, function (array $record, string $section): ?array {
             if (! $this->sourceContains($section, $record['institution'])
                 || ! $this->sourceContains($section, $record['qualification'])) {
@@ -777,10 +937,8 @@ final class CvImportService
      * @param  list<array<string, mixed>>  $certifications
      * @return list<array<string, mixed>>
      */
-    private function groundCertifications(array $certifications, string $sourceText, int &$skipped): array
+    private function groundCertifications(array $certifications, ?string $section, int &$skipped): array
     {
-        $section = $this->sectionLocator->certifications($sourceText);
-
         return $this->groundedItems($certifications, $section, $skipped, function (array $certification, string $section): ?array {
             if (! $this->sourceContains($section, $certification['name'])) {
                 return null;

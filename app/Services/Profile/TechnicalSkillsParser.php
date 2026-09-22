@@ -52,6 +52,14 @@ final class TechnicalSkillsParser
             $sectionText = $sourceText;
         }
 
+        return $this->parseSection($sectionText);
+    }
+
+    /**
+     * @return list<array{name: string, category: string|null, proficiency: null}>
+     */
+    public function parseSection(string $sectionText): array
+    {
         $skills = [];
         $seen = [];
         $category = null;

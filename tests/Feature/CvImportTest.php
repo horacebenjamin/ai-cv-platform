@@ -1,5 +1,6 @@
 <?php
 
+use App\Ai\Agents\ClassifyCvSectionsAgent;
 use App\Ai\Agents\ImportCvAgent;
 use App\Ai\Agents\ImportExperienceAgent;
 use App\Jobs\ProcessAIRequest;
@@ -21,6 +22,7 @@ beforeEach(function (): void {
     config()->set('ai.providers.openai.models.text.default', 'fake-model');
     config()->set('ai.credits.tokens_per_credit', 1000);
     config()->set('ai.credits.minimum', 1);
+    ClassifyCvSectionsAgent::fake()->preventStrayPrompts();
 });
 
 function importedCvText(): string
@@ -128,8 +130,7 @@ function readyImport(
     ?array $data = null,
     ?string $sourceText = null,
     Closure|array|null $experienceResponses = null,
-): ProfileImport
-{
+): ProfileImport {
     $structured = $data ?? importStructuredData();
     $experienceResponses ??= array_map(
         fn (array $experience): StructuredTextResponse => importAgentResponse(experienceAgentData($experience)),
@@ -161,7 +162,9 @@ function readyImport(
 test('the AI agents use focused schemas without asking AI to extract skills', function (): void {
     $schema = new JsonSchemaTypeFactory;
 
-    expect(array_keys((new ImportCvAgent)->schema($schema)))
+    expect(array_keys((new ClassifyCvSectionsAgent)->schema($schema)))
+        ->toBe(['sections'])
+        ->and(array_keys((new ImportCvAgent)->schema($schema)))
         ->toBe(['professional', 'projects', 'education', 'certifications'])
         ->and(array_keys((new ImportExperienceAgent)->schema($schema)))
         ->toBe([
@@ -177,6 +180,292 @@ test('the AI agents use focused schemas without asking AI to extract skills', fu
             'achievements',
             'technologies',
         ]);
+});
+
+test('common headings keep the deterministic fast path and do not invoke section classification', function (): void {
+    Queue::fake();
+    ClassifyCvSectionsAgent::fake()->preventStrayPrompts();
+
+    $import = readyImport(User::factory()->create());
+
+    expect($import->status)->toBe('ready');
+    ClassifyCvSectionsAgent::assertNeverPrompted();
+});
+
+test('one fallback request resolves unusual headings into the existing specialised pipelines', function (): void {
+    Queue::fake();
+
+    $sourceText = <<<'TEXT'
+        Alex Taylor
+        Full Stack Developer
+
+        Career Journey
+
+        Senior Developer | Acme Ltd | January 2024 - Present
+        - Built internal systems.
+
+        Technology Stack
+
+        Backend: PHP, Laravel
+        Frontend: Vue.js, Tailwind CSS
+
+        Academic Background
+
+        BSc Computer Science
+        Example University
+
+        Professional Credentials
+
+        AWS Certified Developer
+        Amazon Web Services
+
+        Selected Work
+
+        Customer Portal
+        Built a customer self-service portal.
+
+        Interests
+
+        Running, photography, travel
+        TEXT;
+    $data = importStructuredData([
+        'experiences' => [[
+            'job_title' => 'Senior Developer',
+            'company' => 'Acme Ltd',
+            'location' => null,
+            'employment_type' => null,
+            'start_date' => '2024-01',
+            'end_date' => null,
+            'currently_employed' => true,
+            'summary' => 'Built internal systems.',
+            'achievements' => ['Built internal systems.'],
+            'technologies' => [],
+        ]],
+        'projects' => [[
+            'name' => 'Customer Portal',
+            'role' => null,
+            'description' => 'Built a customer self-service portal.',
+            'outcomes' => null,
+            'technologies' => [],
+            'url' => null,
+            'repository_url' => null,
+            'start_date' => null,
+            'end_date' => null,
+        ]],
+        'education' => [[
+            'institution' => 'Example University',
+            'qualification' => 'BSc',
+            'subject' => 'Computer Science',
+            'grade' => null,
+            'start_date' => null,
+            'end_date' => null,
+        ]],
+        'certifications' => [[
+            'name' => 'AWS Certified Developer',
+            'organisation' => 'Amazon Web Services',
+            'issue_date' => null,
+            'expiry_date' => null,
+            'credential_id' => null,
+            'credential_url' => null,
+        ]],
+    ]);
+
+    $classificationCalls = 0;
+    ClassifyCvSectionsAgent::fake(function () use (&$classificationCalls): array {
+        $classificationCalls++;
+
+        return [
+            'sections' => [
+                ['heading' => 'Career Journey', 'type' => 'experience'],
+                ['heading' => 'Technology Stack', 'type' => 'skills'],
+                ['heading' => 'Academic Background', 'type' => 'education'],
+                ['heading' => 'Professional Credentials', 'type' => 'certifications'],
+                ['heading' => 'Selected Work', 'type' => 'projects'],
+                ['heading' => 'Interests', 'type' => 'other'],
+            ],
+        ];
+    })->preventStrayPrompts();
+
+    $import = readyImport($user = User::factory()->create(), $data, $sourceText);
+
+    expect($import->extracted['experiences'])
+        ->toHaveCount(1)
+        ->and($import->extracted['experiences'][0]['company'])->toBe('Acme Ltd')
+        ->and($import->extracted['skills'])->toBe([
+            ['name' => 'PHP', 'category' => 'Backend', 'proficiency' => null],
+            ['name' => 'Laravel', 'category' => 'Backend', 'proficiency' => null],
+            ['name' => 'Vue.js', 'category' => 'Frontend', 'proficiency' => null],
+            ['name' => 'Tailwind CSS', 'category' => 'Frontend', 'proficiency' => null],
+        ])
+        ->and($import->extracted['education'][0]['institution'])->toBe('Example University')
+        ->and($import->extracted['certifications'][0]['name'])->toBe('AWS Certified Developer')
+        ->and($import->extracted['projects'][0]['name'])->toBe('Customer Portal')
+        ->and($classificationCalls)->toBe(1)
+        ->and($user->profile()->exists())->toBeFalse();
+
+    ClassifyCvSectionsAgent::assertPrompted(fn (AgentPrompt $prompt): bool => $prompt->contains('Career Journey')
+        && $prompt->contains('Technology Stack')
+        && $prompt->contains('Academic Background')
+        && $prompt->contains('Professional Credentials')
+        && $prompt->contains('Selected Work')
+        && $prompt->contains('Interests')
+        && ! $prompt->contains('Built internal systems.')
+        && ! $prompt->contains('Frontend: Vue.js'));
+    ImportExperienceAgent::assertPrompted(fn (AgentPrompt $prompt): bool => $prompt->contains('Senior Developer')
+        && $prompt->contains('Built internal systems.')
+        && ! $prompt->contains('Technology Stack'));
+    ImportCvAgent::assertPrompted(fn (AgentPrompt $prompt): bool => $prompt->contains('Academic Background')
+        && $prompt->contains('Professional Credentials')
+        && $prompt->contains('Selected Work')
+        && ! $prompt->contains('Career Journey')
+        && ! $prompt->contains('Technology Stack'));
+});
+
+test('an unusual experience heading at the start of a CV reaches experience proposals', function (): void {
+    Queue::fake();
+
+    $sourceText = <<<'TEXT'
+        Career Journey
+
+        Senior Developer | Acme Ltd | January 2024 - Present
+        - Built internal systems.
+        - Improved reporting performance.
+
+        Technology Stack
+
+        Backend: PHP, Laravel
+        Frontend: Vue.js, Tailwind CSS
+
+        Academic Background
+
+        BSc Computer Science
+        Example University
+
+        Professional Credentials
+
+        AWS Certified Developer
+        TEXT;
+    $experience = [
+        'job_title' => 'Senior Developer',
+        'company' => 'Acme Ltd',
+        'location' => null,
+        'employment_type' => null,
+        'start_date' => '2024-01',
+        'end_date' => null,
+        'currently_employed' => true,
+        'summary' => null,
+        'achievements' => [
+            'Built internal systems.',
+            'Improved reporting performance.',
+        ],
+        'technologies' => [],
+    ];
+    $data = importStructuredData([
+        'experiences' => [$experience],
+        'projects' => [],
+        'education' => [[
+            'institution' => 'Example University',
+            'qualification' => 'BSc Computer Science',
+            'subject' => null,
+            'grade' => null,
+            'start_date' => null,
+            'end_date' => null,
+        ]],
+        'certifications' => [[
+            'name' => 'AWS Certified Developer',
+            'organisation' => null,
+            'issue_date' => null,
+            'expiry_date' => null,
+            'credential_id' => null,
+            'credential_url' => null,
+        ]],
+    ]);
+    $classificationCalls = 0;
+
+    ClassifyCvSectionsAgent::fake(function () use (&$classificationCalls): array {
+        $classificationCalls++;
+
+        return [
+            'sections' => [
+                ['heading' => 'Career Journey', 'type' => 'experience'],
+                ['heading' => 'Technology Stack', 'type' => 'skills'],
+                ['heading' => 'Academic Background', 'type' => 'education'],
+                ['heading' => 'Professional Credentials', 'type' => 'certifications'],
+            ],
+        ];
+    })->preventStrayPrompts();
+    $import = readyImport(User::factory()->create(), $data, $sourceText, [
+        importAgentResponse(experienceAgentData($experience)),
+    ]);
+
+    expect($classificationCalls)->toBe(1)
+        ->and($import->extracted['experiences'])->toHaveCount(1)
+        ->and($import->extracted['experiences'][0]['job_title'])->toBe('Senior Developer')
+        ->and($import->extracted['experiences'][0]['company'])->toBe('Acme Ltd')
+        ->and($import->extracted['experiences'][0]['achievements'])->toBe([
+            'Built internal systems.',
+            'Improved reporting performance.',
+        ])
+        ->and($import->extracted['experiences'][0]['technologies'])->toBe([])
+        ->and($import->extracted['skills'])->toBe([
+            ['name' => 'PHP', 'category' => 'Backend', 'proficiency' => null],
+            ['name' => 'Laravel', 'category' => 'Backend', 'proficiency' => null],
+            ['name' => 'Vue.js', 'category' => 'Frontend', 'proficiency' => null],
+            ['name' => 'Tailwind CSS', 'category' => 'Frontend', 'proficiency' => null],
+        ])
+        ->and($import->extracted['education'][0]['qualification'])->toBe('BSc Computer Science')
+        ->and($import->extracted['education'][0]['institution'])->toBe('Example University')
+        ->and($import->extracted['certifications'][0]['name'])->toBe('AWS Certified Developer');
+
+    ImportExperienceAgent::assertPrompted(fn (AgentPrompt $prompt): bool => $prompt->prompt === <<<'TEXT'
+Senior Developer | Acme Ltd | January 2024 - Present
+- Built internal systems.
+- Improved reporting performance.
+TEXT);
+});
+
+test('a known non-career section stays outside fallback facts', function (): void {
+    Queue::fake();
+    ClassifyCvSectionsAgent::fake([[
+        'sections' => [
+            ['heading' => 'Interests', 'type' => 'other'],
+        ],
+    ]])->preventStrayPrompts();
+    $sourceText = importedCvText().<<<'TEXT'
+
+
+    Interests
+
+    Running, photography, travel
+    TEXT;
+
+    $data = importStructuredData([
+        'projects' => [[
+            'name' => 'Running',
+            'role' => null,
+            'description' => 'Travel photography.',
+            'outcomes' => null,
+            'technologies' => [],
+            'url' => null,
+            'repository_url' => null,
+            'start_date' => null,
+            'end_date' => null,
+        ]],
+        'certifications' => [[
+            'name' => 'Photography',
+            'organisation' => null,
+            'issue_date' => null,
+            'expiry_date' => null,
+            'credential_id' => null,
+            'credential_url' => null,
+        ]],
+    ]);
+
+    $import = readyImport(User::factory()->create(), $data, $sourceText);
+
+    expect($import->extracted['projects'])->toBe([])
+        ->and($import->extracted['certifications'])->toBe([]);
+    ClassifyCvSectionsAgent::assertPrompted(fn (AgentPrompt $prompt): bool => $prompt->contains('Interests'));
 });
 
 test('guests cannot import a CV or review proposed facts', function (): void {
